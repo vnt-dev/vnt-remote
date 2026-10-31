@@ -21,7 +21,8 @@
 1. 将根目录 `package.json`、`Cargo.toml` 的 workspace 版本与 `src-tauri/tauri.conf.json` 版本改成同一个值；同步 npm/Cargo 锁文件中本项目的版本。
 2. 提交后创建并推送相同版本标签，首版为 `v0.1.0`。手动运行 Release 时也必须填写已存在的版本标签。
 3. 工作流验证版本一致，构建并签名，创建 **Draft Release**，上传 Windows 安装包、`.sig`、`latest.json`，以及 Windows 与 macOS 免安装产物。
-4. 检查产物后在 GitHub 发布该草稿。稳定版发布后，已安装客户端即可从设置页检查更新。预发布版本不作为 latest 稳定更新源。
+4. 两个平台上传成功后，工作流自动在现有 Release notes 末尾追加系统版本、架构、安装类型与实际附件下载链接的表格；相同表格不会重复追加。上传和追加说明均保留已有 Release title。
+5. 检查产物后在 GitHub 发布该草稿。稳定版发布后，已安装客户端即可从设置页检查更新。预发布版本不作为 latest 稳定更新源。
 
 本地 `npm run build:installed` 可构建未签名安装包，无需 updater 私钥。需要本地签名时设置上述两个 `TAURI_SIGNING_*` 环境变量、`RELEASE_TAG`，运行 `node scripts/prepare-release.mjs`，再运行 `npm run tauri -- build --config src-tauri/tauri.installed.conf.json --config src-tauri/tauri.release.conf.json -- --locked`。
 

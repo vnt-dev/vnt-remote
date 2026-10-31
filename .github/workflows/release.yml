@@ -20,6 +20,8 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
@@ -35,6 +37,7 @@ jobs:
       - name: Validate release version
         run: node scripts/prepare-release.mjs --portable
       - name: Create shared draft release
+        id: release
         shell: bash
         run: |
           set -euo pipefail
@@ -44,6 +47,7 @@ jobs:
             if [[ "$RELEASE_TAG" == *-* ]]; then options+=(--prerelease); fi
             gh release create "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --target "$RELEASE_TARGET" --draft "${options[@]}" --title "VNT Remote $RELEASE_TAG" --notes 'Windows x64 安装版与免安装版；macOS 14+ Apple Silicon 免安装 app.zip。macOS 使用本地签名，首次启动与授权步骤见使用文档。协议 v1，主控与被控须使用相同协议版本。'
           fi
+          echo "release_id=$(gh release view "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --json databaseId --jq '.databaseId')" >> "$GITHUB_OUTPUT"
   windows:
     needs: prepare
     runs-on: windows-latest
@@ -87,10 +91,7 @@ jobs:
           owner: ${{ steps.repository.outputs.owner }}
           repo: ${{ steps.repository.outputs.repo }}
           tagName: ${{ env.RELEASE_TAG }}
-          releaseCommitish: ${{ env.RELEASE_REPOSITORY == github.repository && github.sha || vars.RELEASE_COMMITISH || 'main' }}
-          releaseName: VNT Remote ${{ env.RELEASE_TAG }}
-          releaseDraft: true
-          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          releaseId: ${{ needs.prepare.outputs.release_id }}
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: --config src-tauri/tauri.installed.conf.json --config src-tauri/tauri.release.conf.json -- --locked
@@ -132,3 +133,20 @@ jobs:
       - run: npm run build:portable
       - name: Upload macOS portable bundle
         run: gh release upload "$RELEASE_TAG" target/release/bundle/portable/*-macos-arm64-portable.app.zip --repo "$RELEASE_REPOSITORY" --clobber
+
+  release-notes:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY || 'vnt-dev/vnt-remote' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Append release download table
+        run: node scripts/release-notes.mjs
