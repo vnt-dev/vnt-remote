@@ -1,0 +1,134 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag, e.g. v0.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY || 'vnt-dev/vnt-remote' }}
+      RELEASE_TARGET: ${{ vars.RELEASE_COMMITISH || 'main' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate release version
+        run: node scripts/prepare-release.mjs --portable
+      - name: Create shared draft release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            gh repo view "$RELEASE_REPOSITORY" >/dev/null
+            options=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then options+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --target "$RELEASE_TARGET" --draft "${options[@]}" --title "VNT Remote $RELEASE_TAG" --notes 'Windows x64 安装版与免安装版；macOS 14+ Apple Silicon 免安装 app.zip。macOS 使用本地签名，首次启动与授权步骤见使用文档。协议 v1，主控与被控须使用相同协议版本。'
+          fi
+  windows:
+    needs: prepare
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY || 'vnt-dev/vnt-remote' }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: npm ci
+      - name: Validate version and configure signed updates
+        run: node scripts/prepare-release.mjs
+      - name: Resolve release repository
+        id: repository
+        shell: pwsh
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if ($env:RELEASE_REPOSITORY -ne '${{ github.repository }}' -and !$env:RELEASE_TOKEN) {
+            throw 'Publishing to another repository requires a RELEASE_TOKEN secret with contents write access to that repository.'
+          }
+          $parts = $env:RELEASE_REPOSITORY.Split('/')
+          "owner=$($parts[0])" >> $env:GITHUB_OUTPUT
+          "repo=$($parts[1])" >> $env:GITHUB_OUTPUT
+      - name: Build and upload release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        with:
+          owner: ${{ steps.repository.outputs.owner }}
+          repo: ${{ steps.repository.outputs.repo }}
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseCommitish: ${{ env.RELEASE_REPOSITORY == github.repository && github.sha || vars.RELEASE_COMMITISH || 'main' }}
+          releaseName: VNT Remote ${{ env.RELEASE_TAG }}
+          releaseDraft: true
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: --config src-tauri/tauri.installed.conf.json --config src-tauri/tauri.release.conf.json -- --locked
+      - name: Build portable edition
+        run: |
+          npm run tauri -- build --config src-tauri/tauri.portable.conf.json -- --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/package-portable.mjs
+      - name: Upload portable executable
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          $executables = Get-ChildItem -LiteralPath target/release/bundle/portable -Filter '*-portable.exe'
+          if ($executables.Count -ne 1) { throw 'Expected one portable executable' }
+          gh release upload $env:RELEASE_TAG $executables[0].FullName --repo $env:RELEASE_REPOSITORY --clobber
+
+  macos:
+    needs: prepare
+    runs-on: macos-15
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY || 'vnt-dev/vnt-remote' }}
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: test "$(uname -m)" = arm64
+      - run: npm ci
+      - name: Validate release version
+        run: node scripts/prepare-release.mjs --portable
+      - run: npm run build:portable
+      - name: Upload macOS portable bundle
+        run: gh release upload "$RELEASE_TAG" target/release/bundle/portable/*-macos-arm64-portable.app.zip --repo "$RELEASE_REPOSITORY" --clobber

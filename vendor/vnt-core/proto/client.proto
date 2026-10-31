@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package protocol.client;
+
+enum NatType {
+  NAT_TYPE_CONE = 0;
+  NAT_TYPE_SYMMETRIC = 1;
+}
+message NatInfo {
+
+  NatType nat_type = 1;
+
+  repeated fixed32 public_ips = 2;
+
+  repeated uint32 public_udp_ports = 3;
+
+  uint32 public_port_range = 4;
+
+  repeated fixed32 local_ipv4s = 5;
+
+  optional bytes ipv6 = 6;
+
+  repeated uint32 local_udp_ports = 7;
+
+  uint32 local_tcp_port = 8;
+
+  uint32 public_tcp_port = 9;
+}
+
+message PunchInfo{
+  NatInfo nat_info = 1;
+  // Bit 0..3: IPv4Tcp, IPv4Udp, IPv6Tcp, IPv6Udp. Zero means no modes.
+  uint32 punch_model = 2;
+}
+
+// Identity exchanged only between VNT clients. device_id is deliberately not
+// part of this message: the virtual IPv4 address is the node identifier.
+message NodeSubnet {
+  fixed32 network = 1;
+  uint32 prefix_len = 2;
+}
+
+message NodeIdentity {
+  fixed32 ip = 1;
+  string name = 2;
+  string version = 3;
+  string network_code = 4;
+  repeated NodeSubnet advertised_subnets = 5;
+}
+
+message PeerHandshake {
+  NodeIdentity identity = 1;
+  fixed64 request_id = 2;
+}
+
+// Public metadata propagated through the graph. Network membership has
+// already been established by DirectConnect/Punch and is not broadcast.
+message PublicNodeIdentity {
+  // The enclosing NetPacket src_id is the authoritative node address.
+  reserved 1;
+  string name = 2;
+  string version = 3;
+  repeated NodeSubnet advertised_subnets = 4;
+}
+
+message NodeAnnouncement {
+  PublicNodeIdentity identity = 1;
+  repeated fixed32 direct_peer_ips = 2;
+}

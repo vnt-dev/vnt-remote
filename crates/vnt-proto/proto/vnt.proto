@@ -1,0 +1,441 @@
+// vnt-remote 控制协议（TCP 通道 + 会话协商）
+// 帧格式: [u8 msg_type][u32 len_be][protobuf payload]
+syntax = "proto3";
+
+package vnt;
+
+// 编解码器类型。客户端按解码能力上报，服务端按编码能力协商。
+enum Codec {
+  CODEC_UNSPECIFIED = 0;
+  CODEC_H264 = 1;
+  CODEC_HEVC = 2;
+  CODEC_AV1 = 3;
+}
+
+enum Transport {
+  TRANSPORT_UNSPECIFIED = 0;
+  TRANSPORT_HYBRID = 1;
+  TRANSPORT_TCP = 2;
+  TRANSPORT_VNT = 3;
+  TRANSPORT_QUIC = 4;
+}
+message VideoFrame {
+  bool keyframe = 1;
+  uint32 pts_ms = 2;
+  bytes data = 3;
+  VideoDependencies dependencies = 4;
+}
+
+// Decode-order identity, independent of transport sequence numbers. A new
+// encoder configuration starts a new epoch. Unknown never means independent.
+message VideoDependencies {
+  uint64 epoch = 1;
+  uint64 frame_id = 2;
+  repeated uint64 references = 3;
+  bool independent = 4;
+  bool unknown = 5;
+}
+
+// Authenticated reliable control message; an empty range list requests a whole
+// frame. Ranges are inclusive, sorted, non-overlapping fragment indices.
+message VideoNack {
+  uint32 stream_id = 1;
+  uint32 generation = 2;
+  uint64 epoch = 3;
+  uint64 frame_id = 4;
+  repeated VideoFragmentRange ranges = 5;
+}
+message VideoFragmentRange {
+  uint32 first = 1;
+  uint32 last = 2;
+}
+
+// 服务端可用的编码能力（运行时探测：MF 硬件编码器 / 软件编码器）
+message EncoderCap {
+  Codec codec = 1;
+  bool hardware = 2;
+  string name = 3; // 编码器名称（如 "MF: NVIDIA H264 Encoder MFT"）
+}
+
+message ClientInfo {
+  string name = 1;
+}
+
+// C→S 连接握手（TCP）
+enum ResolutionMode {
+  RESOLUTION_NONE = 0;
+  RESOLUTION_SCALE = 1;
+  RESOLUTION_CHANGE = 2;
+}
+
+message Hello {
+  repeated Codec hardware_codecs = 15; // 可硬件解码且已启用硬件解码的编码列表；无硬件能力时为空
+  uint32 color_depth = 14; // Required: 15, 16, 24, 32; zero is invalid
+  DesktopEffects desktop_effects = 13; // Required session settings
+  uint32 capabilities = 12; // v1: text=1, image=2, files=4, physical resolution=8
+  uint32 fec_version = 11; // zero disables FEC; version 1 protects UDP media only
+  ResolutionMode resolution_mode = 8;
+  uint32 target_width = 9;
+  uint32 target_height = 10;
+  uint32 proto_ver = 1;
+  Transport transport = 2;
+  repeated Codec codecs = 3; // 客户端可解码列表（按偏好降序）
+  ClientInfo client = 4;
+  uint32 fps = 5; // Controller requested frame rate
+  uint32 bitrate_kbps = 6; // Controller requested bitrate
+  bool audio_enabled = 7; // 固定于本次连接，不支持运行时切换
+}
+
+message DesktopEffects {
+  bool show_wallpaper = 1;
+  bool drag_full_windows = 2;
+}
+
+// S→C 每个连接独立生成的 256 位随机挑战。
+message AuthChallenge {
+  bytes nonce = 1;
+}
+
+// C→S HMAC-SHA256(password, "vnt-remote-auth-v1\0" || nonce)。
+message AuthResponse {
+  bytes proof = 1;
+}
+
+enum HostEdition {
+  HOST_EDITION_UNSPECIFIED = 0;
+  HOST_EDITION_INSTALLED = 1;
+  HOST_EDITION_PORTABLE = 2;
+}
+
+// S→C 握手成功
+message Welcome {
+  uint32 color_depth = 21; // Confirmed session color depth; must match the requested depth
+  uint32 capabilities = 20; // negotiated intersection of endpoint capabilities
+  uint32 fec_version = 19; // negotiated, zero when disabled or using TCP
+  repeated ScreenInfo screens = 18;
+  HostEdition host_edition = 17; // 免安装版不支持安全注意序列。
+  ResolutionMode resolution_mode = 15;
+  string resolution_reason = 16;
+  bytes session_token = 14; // In-memory session recovery secret; never log or persist.
+  bool audio_enabled = 13; // 双方均开启才传输，独立于 view_only
+  uint32 proto_ver = 1;
+  Transport transport = 11;
+  uint32 session_id = 2;
+  // UDP 绑定凭证：仅随 Welcome 下发，UdpBind 必须回带，防止未认证
+  // 接收端凭猜测的 session_id 劫走视频流
+  bytes bind_token = 10;
+  Codec codec = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  uint32 fps = 6;
+  bool hardware = 7;
+  bytes decoder_config = 8; // SPS/PPS 等，Annex B 时可为空
+  string encoder_name = 9;
+  // 被控端「仅共享屏幕」：主控端只能观看。服务端据此忽略输入事件并
+  // 禁用剪贴板同步；客户端据此隐藏控制能力（不绑定键鼠、不启剪贴板）。
+  bool view_only = 12;
+}
+
+// Screen-scoped messages preserve the existing codec/input payloads. The inner
+// payload is one complete framed message; nesting and session messages are forbidden.
+message ScreenPacket {
+  uint32 stream_id = 1;
+  uint32 generation = 2;
+  bytes message = 3;
+  uint64 revision = 4; // Input ownership revision; telemetry uses zero.
+}
+message ScreenInfo {
+  uint32 stream_id = 1;
+  string name = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+  uint32 fps = 5;
+  Codec codec = 6;
+  bool hardware = 7;
+  bool available = 8;
+  string reason = 9;
+  uint32 generation = 10;
+}
+message ScreenCommand {
+  enum Action { SELECT = 0; CLOSE = 1; }
+  Action action = 1;
+  uint32 stream_id = 2;
+  uint64 revision = 3;
+}
+message ScreensState {
+  uint64 revision = 1;
+  uint32 active_stream_id = 2;
+  repeated ScreenInfo screens = 3;
+}
+// Local workers acknowledge that their capture and encoder have stopped.
+message StopVideo { bool acknowledged = 1; }
+// C→S, scoped by ScreenPacket. Preserve the negotiated limits for restoration.
+message ScreenThrottle { bool background = 1; }
+message CursorPosition {
+  sint32 x = 1;
+  sint32 y = 2;
+  bool available = 3;
+  sint32 monitor_x = 4;
+  sint32 monitor_y = 5;
+  uint32 monitor_width = 6;
+  uint32 monitor_height = 7;
+}
+
+enum ChannelKind { CHANNEL_CONTROL = 0; CHANNEL_FILES = 1; CHANNEL_MEDIA = 2; }
+enum SessionOperation {
+  SESSION_UNSPECIFIED = 0;
+  SESSION_RESUME = 1;
+  SESSION_CHALLENGE = 2;
+  SESSION_PROOF = 3;
+  SESSION_ATTACHED = 4;
+  SESSION_GRANT_REQUEST = 5;
+  SESSION_GRANT = 6;
+  SESSION_BIND = 7;
+  SESSION_STATUS = 8;
+  SESSION_SYNC = 9;
+  SESSION_SYNC_ACK = 10;
+  SESSION_SYNC_COMMIT = 11;
+}
+// Only the network session layer consumes these messages.
+message SessionPacket {
+  SessionOperation op = 1;
+  ChannelKind kind = 2;
+  uint32 session_id = 3;
+  uint64 generation = 4;
+  bytes attempt = 5;
+  bytes nonce = 6;
+  bytes credential = 7;
+  bool available = 8;
+  string reason = 9;
+  uint64 state_revision = 10;
+}
+
+message ClipboardImageReady {
+  uint32 image_id = 1;
+  uint64 generation = 2;
+}
+
+// Local IPC events; forbidden on remote application channels.
+message TransportState {
+  ChannelKind kind = 1;
+  bool available = 2;
+  uint64 generation = 3;
+  uint64 state_revision = 4;
+  bool synchronizing = 5;
+}
+message ResetInput {}
+
+// Opus restricted-lowdelay, 48 kHz stereo, 480 samples/channel per packet.
+message AudioFrame {
+  uint32 generation = 1; // changes only when the capture device is rebuilt
+  uint32 sequence = 2;
+  uint64 timestamp_samples = 3;
+  bytes data = 4;
+}
+
+// Reliable capture status; device failures never end the desktop session.
+message AudioState {
+  uint32 generation = 1;
+  bool available = 2;
+  string reason = 3;
+}
+
+// S→C 握手失败
+message Denied {
+  string reason = 1;
+}
+
+// C→S (UDP) 绑定视频通道；S→C (TCP) 确认
+message UdpBind {
+  uint32 session_id = 1;
+  bytes bind_token = 2; // Welcome 下发的凭证
+}
+message UdpBindAck {
+  uint32 session_id = 1;
+}
+
+// S→C 视频流参数变化（分辨率改变/编码器重建），客户端需重新配置解码器
+message StreamReset {
+  uint32 width = 1;
+  uint32 height = 2;
+  uint32 fps = 3;
+  bytes decoder_config = 4;
+}
+
+enum MouseButton {
+  MOUSE_NONE = 0;
+  MOUSE_LEFT = 1;
+  MOUSE_RIGHT = 2;
+  MOUSE_MIDDLE = 3;
+  MOUSE_X1 = 4;
+  MOUSE_X2 = 5;
+}
+
+// C→S 输入事件（坐标相对被捕获显示器，归一化 0.0~1.0）
+message InputEvent {
+  oneof ev {
+    MouseMove mouse_move = 1;
+    MouseButtonEvent mouse_button = 2;
+    WheelEvent wheel = 3;
+    KeyEvent key = 4;
+  }
+}
+
+message MouseMove {
+  float x = 1;
+  float y = 2;
+}
+
+message MouseButtonEvent {
+  MouseButton button = 1;
+  bool down = 2;
+}
+
+// 滚轮：dy 正=向上滚，dx 正=向右滚，单位约为一行/格
+message WheelEvent {
+  float dx = 1;
+  float dy = 2;
+}
+
+// 键盘：Windows Set/Make 扫描码（非扩展部分），扩展键（方向键/Insert 等）置 extended
+message KeyEvent {
+  uint32 scancode = 1;
+  bool extended = 2;
+  bool down = 3;
+}
+
+// C→S 请求强制关键帧（丢包恢复，服务端节流）
+message RequestKeyframe {}
+
+message Ping {
+  uint64 timestamp_ms = 1;
+}
+message Pong {
+  uint64 timestamp_ms = 1; // 回显 Ping.timestamp_ms
+}
+
+message SessionEnd {
+  string reason = 1;
+}
+
+// S→C 周期统计（约 1s 一次）
+message StatsReport {
+  uint32 fps = 1;
+  uint32 bitrate_kbps = 2;
+  uint32 encode_ms = 3;
+  uint32 capture_ms = 4;
+  uint32 target_fps = 5;
+  uint32 target_bitrate_kbps = 6;
+  uint32 applied_fps = 7;
+  uint32 applied_bitrate_kbps = 8;
+  optional uint32 loss_permille = 9;
+}
+
+// C→S, one report per second, including when no video arrives.
+message LinkFeedback {
+  repeated FecFeedback fec = 8;
+  uint64 sequence = 1;
+  uint32 interval_ms = 2;
+  uint32 received_frames = 3;
+  uint32 lost_frames = 4;
+  uint64 received_bytes = 5;
+  optional uint32 frame_gap_ms = 6; // absent until the first complete frame
+  optional uint32 rtt_ms = 7; // absent when no recent matching Pong is available
+}
+
+message FecFeedback {
+  uint32 stream_id = 1;
+  uint32 generation = 2;
+  bool audio = 3;
+  uint64 expected = 4;
+  uint64 received = 5; // originals only, after reordering deadline
+  uint64 recovered = 6;
+  uint64 residual = 7;
+  uint64 parity_bytes = 8;
+  uint32 ratio_permille = 9;
+}
+
+// ---------- 剪贴板同步 ----------
+
+// 文本剪贴板（双向）：本机复制文本 → 对端剪贴板写入同样文本。
+// 超过上限的文本直接拒绝（见 control::MAX_CLIPBOARD_TEXT）。
+message ClipboardText {
+  string text = 1;
+}
+
+// A complete lossless PNG follows in ordered, bounded chunks.
+message ClipboardImage {
+  uint32 image_id = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  uint32 total_bytes = 4;
+}
+// Revoke only this image; never cancel a newer copy from the other endpoint.
+message ClipboardImageCancel {
+  uint32 image_id = 1;
+}
+message ClipboardImageChunk {
+  uint32 image_id = 1;
+  uint32 offset = 2;
+  bytes data = 3;
+}
+
+// Metadata only on copy; content is pulled by the Shell on paste.
+message NativeFileItem {
+  string rel_path = 1;
+  uint64 size = 2;
+  bool directory = 3;
+  uint32 attributes = 4;
+  uint64 creation_time = 5; // Windows FILETIME ticks
+  uint64 write_time = 6;
+}
+message ClipboardOffer {
+  uint32 offer_id = 1; // 0 + empty items revokes the previous offer
+  repeated NativeFileItem items = 2;
+  uint64 total_bytes = 3;
+  string error = 4; // offer_id=0: preparation failed, bounded to 1024 UTF-8 bytes
+}
+message ClipboardRequest {
+  enum Action { START = 0; READ = 1; CLOSE = 2; FINISH = 3; CANCEL = 4; ABORT = 5; }
+  uint32 offer_id = 1;
+  uint32 operation_id = 2;
+  uint32 request_id = 3;
+  Action action = 4;
+  uint32 item_index = 5;
+  uint64 offset = 6;
+  uint32 length = 7;
+  bool ok = 8;
+  string reason = 9;
+}
+message ClipboardReply {
+  uint32 offer_id = 1;
+  uint32 operation_id = 2;
+  uint32 request_id = 3;
+  uint32 item_index = 4;
+  uint64 offset = 5;
+  bytes data = 6;
+  string reason = 7;
+}
+
+// Windows service desktop transitions; never contain credentials.
+message DesktopState { bool ready = 1; string desktop = 2; string reason = 3; uint32 generation = 4; uint32 min_pts_ms = 5; }
+message SendSas {}
+
+// Named-pipe messages only; excluded from every remote lane.
+message AgentDesktop {
+ string desktop = 1;
+ bool capture_ready = 2;
+ bool input_ready = 3;
+ string reason = 4;
+ bytes monitors_json = 5;
+}
+message AgentMessage {
+ uint64 generation = 1;
+ oneof payload {
+ VideoFrame video = 2;
+ StreamReset config = 3;
+ InputEvent input = 4;
+ AgentDesktop desktop = 5;
+ DesktopState input_feedback = 6;
+ }
+}

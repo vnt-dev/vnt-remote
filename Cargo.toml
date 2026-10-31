@@ -1,0 +1,80 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "src-tauri", "vendor/vnt-core"]
+exclude = ["vendor/screencap"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+hostname = "0.4"
+vnt-core = { path = "vendor/vnt-core" }
+bytes = "1"
+quinn = { version = "0.11", default-features = false, features = ["rustls", "runtime-tokio"] }
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+prost = "0.14"
+prost-build = "0.14"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "macros", "fs"] }
+tokio-tungstenite = "0.30"
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+screencap = "0.1.1"
+windows-core = "0.61"
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Media",
+    "Win32_Media_DirectShow",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_Shell_Common",
+    "Win32_System_Threading",
+    "Win32_System_StationsAndDesktops",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+openh264 = "0.9"
+getrandom = "0.3"
+tempfile = "3"
+tokio-util = { version = "0.7", features = ["rt"] }
+
+vnt-proto = { path = "crates/vnt-proto" }
+vnt-net = { path = "crates/vnt-net" }
+vnt-capture = { path = "crates/vnt-capture" }
+vnt-codec = { path = "crates/vnt-codec" }
+vnt-input = { path = "crates/vnt-input" }
+vnt-clip = { path = "crates/vnt-clip" }
+vnt-audio = { path = "crates/vnt-audio" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+# Keep the real-time pixel conversion and native H264 codec optimized in dev
+# and the inheriting test profile; unoptimized moving 720p frames miss even 10 FPS.
+# Application crates retain debug checks and symbols for normal debugging.
+[profile.dev.package.yuv]
+opt-level = 3
+
+[profile.dev.package.openh264-sys2]
+opt-level = 3
+
+# 仓库内保留 screencap 0.1.1 源码及 WGC 暂存纹理缓存补丁，确保独立构建。
+# 上游提交：254fcffaf3229c80f1a50cfa82f4ec0ddf9d9fe4。
+[patch.crates-io]
+screencap = { path = "vendor/screencap" }

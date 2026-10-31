@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": ["icons/icon.icns", "icons/64x64.png"],
+    "externalBin": [],
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "signingIdentity": "-",
+      "infoPlist": "Info.macos.plist"
+    }
+  }
+}

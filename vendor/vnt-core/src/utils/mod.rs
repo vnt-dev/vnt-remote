@@ -1,0 +1,15 @@
+pub(crate) mod addr;
+pub(crate) mod atomic64;
+pub mod device_id;
+pub(crate) mod dns_query;
+pub(crate) mod http_get;
+pub(crate) mod socket;
+pub mod task_control;
+pub(crate) mod time {
+    pub fn now_ts_ms() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+    }
+}

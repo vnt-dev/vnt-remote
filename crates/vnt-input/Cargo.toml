@@ -1,0 +1,17 @@
+[package]
+name = "vnt-input"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "vnt-remote input injection (Windows SendInput)"
+
+[dependencies]
+thiserror = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+vnt-macos = { path = "../vnt-macos" }
+serde_json = { workspace = true }

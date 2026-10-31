@@ -1,0 +1,208 @@
+syntax = "proto3";
+
+package protocol.control_message;
+
+enum RegistrationMode {
+  NORMAL = 0;
+  PRE_REGISTER = 1;
+}
+
+enum ClientType {
+  VNT = 0;
+  IKEV2 = 1;
+  WIREGUARD = 2;
+  REMOTE_DESKTOP = 3;
+}
+
+message RegRequestMsg {
+  optional fixed32 connection_id = 16;
+  ClientType client_type = 15;
+  string network_code = 1;
+  string device_id = 2;
+  optional fixed32 ip = 3;
+  string name = 4;
+  string version = 5;
+  optional string key_sign = 6;
+  bool ip_variable = 7;
+  fixed32 server_id = 8;
+  RegistrationMode registration_mode = 9;
+  repeated Ipv4Subnet advertised_subnets = 10;
+  bool allow_ikev2 = 11;
+  bool allow_wireguard = 12;
+  optional SubscriptionRegistration subscription = 13;
+  bytes client_instance_id = 14;
+}
+
+
+message RegResponseMsg {
+  optional fixed32 connection_id = 11;
+  bool application_channel_supported = 10;
+  fixed32 ip = 1;
+  uint32 prefix_len = 2;
+  fixed32 gateway = 3;
+  string server_version = 4;
+  bool subnet_sync_supported = 5;
+  bool subscription_config_supported = 6;
+  optional SubscriptionServerProof subscription = 7;
+  bytes server_instance_id = 8;
+  bool multi_link_supported = 9;
+}
+
+enum SubscriptionConfigApplyStatus {
+  SUBSCRIPTION_CONFIG_STAGED = 0;
+  SUBSCRIPTION_CONFIG_APPLIED = 1;
+  SUBSCRIPTION_CONFIG_ERROR = 2;
+  SUBSCRIPTION_CONFIG_SUPERSEDED = 3;
+}
+
+message SubscriptionRegistration {
+  string network_code = 1;
+  string device_id = 2;
+  bytes client_nonce = 3;
+  bytes client_proof = 4;
+  bytes instance_id = 5;
+  uint64 applied_revision = 6;
+}
+
+message SubscriptionServerProof {
+  bytes server_nonce = 1;
+  bytes server_proof = 2;
+  uint64 target_revision = 3;
+}
+
+message SubscriptionConfigV1 {
+  optional fixed32 connection_id = 5;
+  string toml = 1;
+  fixed32 managed_ip = 2;
+  uint32 managed_prefix_len = 3;
+  string managed_device_name = 4;
+}
+
+message SubscriptionConfigFetchRequest {
+  string join_id = 1;
+  bytes client_nonce = 3;
+  bytes client_proof = 4;
+  bytes instance_id = 5;
+  uint64 applied_revision = 6;
+}
+
+// Opens the long-lived subscription control connection.  Unlike RegRequestMsg
+// this request never creates a virtual-network/traffic session.
+message SubscriptionRegisterRequest {
+  string join_id = 1;
+  bytes client_nonce = 3;
+  bytes client_proof = 4;
+  bytes instance_id = 5;
+  uint64 applied_revision = 6;
+}
+
+message SubscriptionRegisterResponse {
+  SubscriptionConfigEnvelope config = 1;
+}
+
+message SubscriptionPing {
+  uint64 nonce = 1;
+}
+
+message SubscriptionPong {
+  uint64 nonce = 1;
+}
+
+message SubscriptionConfigEnvelope {
+  uint64 revision = 1;
+  SubscriptionConfigV1 config = 2;
+  SubscriptionServerProof server_proof = 3;
+  string network_code = 4;
+  string device_id = 5;
+  string source_server_id = 6;
+  bytes content_sha256 = 7;
+}
+
+message SubscriptionConfigAck {
+  optional fixed32 effective_connection_id = 15;
+  uint64 revision = 1;
+  SubscriptionConfigApplyStatus status = 2;
+  string error = 3;
+  repeated string overridden_fields = 4;
+  string apply_mode = 5;
+  repeated string changed_fields = 6;
+  string effective_device_name = 7;
+  fixed32 effective_ip = 8;
+  uint32 effective_prefix_len = 9;
+  repeated Ipv4Subnet effective_output = 10;
+  bool allow_ikev2 = 11;
+  bool allow_wireguard = 12;
+  bool allow_mapping = 13;
+  bytes effective_config_sha256 = 14;
+}
+
+message Ipv4Subnet {
+  fixed32 network = 1;
+  uint32 prefix_len = 2;
+}
+
+
+
+
+
+
+
+message ConfirmRegMsg {
+}
+
+message ConfirmRegResponseMsg {
+  bool success = 1;
+}
+
+message FastRegRequestMsg {
+  optional fixed32 connection_id = 2;
+  fixed32 ip = 1;
+}
+
+message FastRegResponseMsg {
+  bool success = 1;
+}
+
+message ErrorResponseMsg {
+  uint32 code = 1;
+  string message = 2;
+}
+
+message RequestMessage{
+  oneof request_payload{
+    RegRequestMsg reg = 1;
+    ConfirmRegMsg confirm_reg = 2;
+    FastRegRequestMsg fast_reg = 3;
+    SubscriptionConfigFetchRequest subscription_config = 4;
+    SubscriptionRegisterRequest subscription_register = 5;
+    SubscriptionConfigAck subscription_ack = 6;
+    SubscriptionPing subscription_ping = 7;
+  }
+}
+message ResponseMessage{
+  oneof response_payload{
+    RegResponseMsg reg = 1;
+    ErrorResponseMsg error = 2;
+    ConfirmRegResponseMsg confirm_reg = 3;
+    FastRegResponseMsg fast_reg = 4;
+    SubscriptionConfigEnvelope subscription_config = 5;
+    SubscriptionRegisterResponse subscription_register = 6;
+    SubscriptionConfigEnvelope subscription_push = 7;
+    SubscriptionPong subscription_pong = 8;
+  }
+}
+
+
+
+message ClientSimpleInfo{
+  fixed32 ip = 1;
+  bool online = 2;
+  ClientType client_type = 3;
+}
+
+message ClientSimpleInfoList{
+  uint64 data_version = 1;
+  repeated ClientSimpleInfo list = 2;
+  bool is_all = 3;
+  int64 time = 4;
+}

@@ -1,0 +1,196 @@
+use crate::context::config::Config;
+use crate::context::{
+    AppState, NetworkAddr, PacketLossInfo, ServerNodeInfo, TrafficInfo, TunnelListenAddr,
+};
+use crate::protocol::control_message::{
+    ClientSimpleInfo, SubscriptionConfigAck, SubscriptionConfigEnvelope,
+};
+use crate::tunnel_core::p2p::route_table::Route;
+use crate::tunnel_core::server::rpc::ServerRPC;
+use anyhow::Context;
+use ipnet::Ipv4Net;
+use rustp2p_core::nat::NatInfo;
+use std::net::Ipv4Addr;
+
+#[derive(Clone, Debug)]
+pub struct ApiNodeInfo {
+    pub ip: Ipv4Addr,
+    pub name: String,
+    pub version: String,
+    pub advertised_subnets: Vec<Ipv4Net>,
+}
+
+#[derive(Clone)]
+pub struct VntApi {
+    app_state: AppState,
+    server_rpc: ServerRPC,
+}
+
+impl VntApi {
+    pub(crate) fn new(app_state: AppState, server_rpc: ServerRPC) -> Self {
+        Self {
+            app_state,
+            server_rpc,
+        }
+    }
+
+    pub fn application_endpoint(&self) -> Option<crate::application::ApplicationEndpoint> {
+        self.app_state.application.get().cloned()
+    }
+    pub fn server_rpc(&self) -> &ServerRPC {
+        &self.server_rpc
+    }
+    /// 获取启动配置
+    pub fn get_config(&self) -> Option<Box<Config>> {
+        self.app_state.get_config()
+    }
+    /// 获取所有客户端ip
+    pub fn client_ips(&self) -> Vec<ClientSimpleInfo> {
+        self.app_state.client_ips()
+    }
+    /// 判断目标IP是否直连
+    pub fn is_direct(&self, ip: &Ipv4Addr) -> bool {
+        self.app_state.route_table.p2p_num(ip) > 0
+    }
+    /// 查找路由
+    pub fn find_route(&self, ip: &Ipv4Addr) -> Option<Route> {
+        self.app_state.route_table.get_route_by_id(ip).ok()
+    }
+    pub fn get_rtt(&self, ip: &Ipv4Addr) -> Option<u32> {
+        if let Some(route) = self.find_route(ip) {
+            Some(route.rtt())
+        } else {
+            self.server_node_rtt(ip).map(|v| v * 2)
+        }
+    }
+    /// 获取所有路由
+    pub fn route_table(&self) -> Vec<(Ipv4Addr, Vec<Route>)> {
+        self.app_state.route_table.route_table()
+    }
+    /// Returns identities learned from direct handshakes and Gossip
+    /// announcements. Entries disappear with their last route.
+    pub fn gossip_node_list(&self) -> Vec<ApiNodeInfo> {
+        self.app_state
+            .node_info_map
+            .list()
+            .into_iter()
+            .map(|node| ApiNodeInfo {
+                ip: node.ip,
+                name: node.name,
+                version: node.version,
+                advertised_subnets: node.advertised_subnets,
+            })
+            .collect()
+    }
+
+    /// 获取服务器节点
+    pub fn server_node_list(&self) -> Vec<ServerNodeInfo> {
+        self.app_state.server_info_collection.server_node_list()
+    }
+    pub fn server_node_rtt(&self, ip: &Ipv4Addr) -> Option<u32> {
+        self.app_state.server_info_collection.get_server_rtt(ip)
+    }
+    /// 获取网络配置
+    pub fn network(&self) -> Option<NetworkAddr> {
+        self.app_state.get_network()
+    }
+    /// 获取当前的nat信息
+    pub fn nat_info(&self) -> Option<NatInfo> {
+        self.app_state.get_nat_info()
+    }
+    /// Returns the P2P TCP/UDP sockets that are actually bound by this instance.
+    pub fn p2p_listen_addrs(&self) -> Vec<TunnelListenAddr> {
+        self.app_state.p2p_listen_addrs()
+    }
+    /// Drain configuration updates pushed by the management server. The outer
+    /// application owns validation, atomic persistence, rollback and restart.
+    pub fn take_subscription_config_updates(&self) -> Vec<SubscriptionConfigEnvelope> {
+        self.app_state.take_subscription_config_updates()
+    }
+
+    /// Wait for the next managed configuration update without polling.
+    pub async fn next_subscription_config_updates(
+        &self,
+    ) -> Option<Vec<SubscriptionConfigEnvelope>> {
+        self.app_state.next_subscription_config_updates().await
+    }
+
+    /// Advances the locally reported managed revision without sending an ACK.
+    /// Hosts use this after a fetched configuration has successfully completed
+    /// initial startup: the next registration must describe the running state,
+    /// while startup itself is not a configuration-application acknowledgement.
+    pub fn mark_subscription_applied_locally(&self, revision: u64) -> anyhow::Result<()> {
+        let config = self
+            .app_state
+            .get_config()
+            .context("Network instance is not running")?;
+        let managed = config
+            .managed
+            .as_ref()
+            .context("Network instance is not subscription-managed")?;
+        managed.mark_applied(revision);
+        Ok(())
+    }
+
+    pub async fn acknowledge_subscription_config(
+        &self,
+        ack: SubscriptionConfigAck,
+    ) -> anyhow::Result<usize> {
+        let revision = ack.revision;
+        let applied = ack.status
+            == crate::protocol::control_message::SubscriptionConfigApplyStatus::SubscriptionConfigApplied;
+        if applied
+            && let Some(config) = self.app_state.get_config()
+            && let Some(managed) = &config.managed
+        {
+            // The registration revision represents local committed state, not
+            // ACK delivery. Advance it before best-effort network reporting so
+            // reconnect catch-up never advertises an older revision.
+            managed.mark_applied(revision);
+        }
+        let sent = self.server_rpc.acknowledge_subscription_config(ack).await?;
+        Ok(sent)
+    }
+    pub fn has_verified_config_server(&self) -> bool {
+        self.server_rpc.has_verified_config_server()
+    }
+    pub fn peer_nat_info(&self, ip: &Ipv4Addr) -> Option<NatInfo> {
+        self.app_state.get_peer_info(ip).and_then(|v| v.nat_info)
+    }
+    /// 获取指定 IP 的聚合丢包信息（所有路由合并）
+    pub fn packet_loss_info(&self, ip: &Ipv4Addr) -> Option<PacketLossInfo> {
+        self.app_state
+            .packet_loss_stats
+            .get_aggregated_loss_info(ip)
+    }
+    /// 获取指定 IP 的所有路由的丢包信息
+    pub fn packet_loss_info_by_routes(&self, ip: &Ipv4Addr) -> Vec<PacketLossInfo> {
+        self.app_state.packet_loss_stats.get_loss_info_by_ip(ip)
+    }
+    pub fn all_packet_loss_info(&self) -> Vec<PacketLossInfo> {
+        self.app_state.packet_loss_stats.get_all_loss_info()
+    }
+    pub fn reset_packet_loss(&self, ip: &Ipv4Addr) {
+        // 重置该 IP 的所有路由统计
+        for info in self.app_state.packet_loss_stats.get_loss_info_by_ip(ip) {
+            if let Some(route_key) = info.route_key {
+                self.app_state.packet_loss_stats.reset(ip, &route_key);
+            }
+        }
+    }
+    pub fn reset_all_packet_loss(&self) {
+        self.app_state.packet_loss_stats.reset_all()
+    }
+    pub fn traffic_info(&self, ip: &Ipv4Addr) -> Option<TrafficInfo> {
+        self.app_state.traffic_stats.get_traffic_info(ip)
+    }
+    pub fn all_traffic_info(&self) -> Vec<TrafficInfo> {
+        self.app_state.traffic_stats.get_all_traffic_info()
+    }
+    pub fn reset_traffic(&self, ip: &Ipv4Addr) {
+        self.app_state.traffic_stats.reset(ip)
+    }
+    pub fn reset_all_traffic(&self) {
+        self.app_state.traffic_stats.reset_all()
+    }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "features": ["installed"],
+    "beforeDevCommand": "node scripts/build-service.mjs --debug && npm run dev",
+    "beforeBuildCommand": "npm run build && node scripts/build-service.mjs"
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "externalBin": ["binaries/vnt-service"]
+  }
+}

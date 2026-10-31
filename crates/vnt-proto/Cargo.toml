@@ -1,0 +1,18 @@
+[package]
+name = "vnt-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "vnt-remote wire protocol: protobuf control messages, TCP framing, UDP video fragmentation"
+
+[dependencies]
+serde = { workspace = true }
+prost = { workspace = true }
+thiserror = { workspace = true }
+hmac = "0.12"
+sha2 = "0.10"
+getrandom = { workspace = true }
+
+[build-dependencies]
+prost-build = { workspace = true }
+protoc-bin-vendored = "3"

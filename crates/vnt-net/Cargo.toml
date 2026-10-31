@@ -1,0 +1,30 @@
+[package]
+name = "vnt-net"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "vnt-remote transport: TCP/UDP and direct QUIC (tokio)"
+
+[dependencies]
+futures-util = { workspace = true }
+vnt-core = { workspace = true }
+bytes = { workspace = true }
+quinn = { workspace = true }
+argon2 = "0.5"
+ring = "0.17"
+rcgen = { version = "0.14.6", default-features = false, features = ["ring", "crypto"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+x509-parser = "0.18"
+serde = { workspace = true }
+reed-solomon-erasure = "6"
+log = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+socket2 = "0.6"
+vnt-proto = { workspace = true }
+
+getrandom = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

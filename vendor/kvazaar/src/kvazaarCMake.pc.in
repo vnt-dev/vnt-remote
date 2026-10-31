@@ -1,0 +1,12 @@
+prefix=@DEFERRED@CMAKE_INSTALL_PREFIX@DEFERRED@
+exec_prefix=${prefix}
+libdir=@KVAZAAR_PC_LIBDIR@
+incdir=@KVAZAAR_PC_INCDIR@
+
+Name: libkvazaar
+Description: @CMAKE_PROJECT_DESCRIPTION@
+URL: @CMAKE_PROJECT_HOMEPAGE_URL@
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lkvazaar
+Libs.private: @LIBS@
+Cflags: -I${incdir}

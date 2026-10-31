@@ -1,0 +1,24 @@
+[package]
+name = "vnt-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Low-latency system audio capture, Opus and native playback"
+
+[dependencies]
+vnt-proto.workspace = true
+tokio.workspace = true
+log.workspace = true
+serde.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Media_Audio", "Win32_Security", "Win32_Devices_FunctionDiscovery"] }
+windows-core.workspace = true
+
+[build-dependencies]
+cmake = "0.1"
+cc = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+vnt-macos = { path = "../vnt-macos" }
+serde_json = { workspace = true }

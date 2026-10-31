@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>连接局域网内的设备并提供远程桌面服务。</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>共享本机屏幕和系统播放声音，以供远程设备观看。</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>将本机系统播放声音同步到远程设备，不采集麦克风。</string>
+  <key>NSAccessibilityUsageDescription</key>
+  <string>允许经过密码认证的远程设备控制本机键盘和鼠标。</string>
+</dict>
+</plist>

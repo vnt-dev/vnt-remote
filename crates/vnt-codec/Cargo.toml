@@ -1,0 +1,36 @@
+[package]
+name = "vnt-codec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "vnt-remote video encoding: Media Foundation HW + H264/HEVC/AV1 SW fallback"
+
+[dependencies]
+thiserror = { workspace = true }
+log = { workspace = true }
+env_logger = "0.11"
+vnt-proto = { workspace = true }
+memchr = "2"
+yuv = "0.8.19"
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+windows-core = { workspace = true }
+openh264 = { workspace = true }
+
+[target.'cfg(windows)'.dev-dependencies]
+windows = { workspace = true, features = ["Win32_System_Com_StructuredStorage"] }
+vnt-capture = { workspace = true }
+
+[[bin]]
+name = "codec-probe"
+path = "src/bin/codec_probe.rs"
+
+[build-dependencies]
+cmake = "0.1"
+cc = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+vnt-macos = { path = "../vnt-macos" }
+serde_json = { workspace = true }
+openh264 = { workspace = true }

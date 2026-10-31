@@ -1,0 +1,38 @@
+# 依赖
+node_modules/
+
+# 构建产物
+/dist
+/target
+src-tauri/target/
+src-tauri/gen/
+
+# Rust
+**/*.rs.bk
+*.pdb
+
+# 日志
+*.log
+npm-debug.log*
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# ZCode 工具状态
+.zcode/
+
+# Generated Windows service sidecar
+/src-tauri/binaries/
+/src-tauri/tauri.release.conf.json

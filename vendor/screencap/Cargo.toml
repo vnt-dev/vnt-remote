@@ -1,0 +1,37 @@
+[package]
+name = "screencap"
+version = "0.1.1"
+edition = "2021"
+license = "Apache-2.0"
+description = "Capture screen data"
+repository = "https://github.com/capture-rs/screencap"
+keywords = ["dxgi", "gdi", "screen"]
+
+[dependencies]
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62.2", features = [
+    "Security_Authorization_AppCapabilityAccess",
+    "Win32_System_LibraryLoader", "Win32_Graphics_Dxgi", "Win32_Graphics_Gdi",
+    "Win32_Graphics_Direct3D", "Win32_System_WinRT", "System", "Win32_System_Threading",
+    "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi_Common", "Win32_System_WinRT_Graphics_Capture", "Win32_UI_WindowsAndMessaging", "Graphics_Capture", "Win32_System_WinRT_Direct3D11", "Graphics_DirectX_Direct3D11"
+] }
+windows-future = "0.3.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+xcb = { version = "1.5.0",features = ["randr"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.25.0"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin"
+]
+
+[dev-dependencies]
+image = "0.25.6"

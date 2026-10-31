@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "vnt-remote",
+  "version": "0.1.0",
+  "identifier": "com.vnt.remote",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "VNT Remote",
+        "width": 1200,
+        "height": 780,
+        "minWidth": 1200,
+        "minHeight": 620,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost ws://127.0.0.1:*",
+      "devCsp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": [],
+    "icon": ["icons/icon.ico"],
+    "resources": {
+      "../vendor/vnt-core/LICENSE": "licenses/vnt-core-LICENSE.txt",
+      "../vendor/kvazaar/LICENSE": "licenses/kvazaar-LICENSE.txt",
+      "../vendor/opus/COPYING": "licenses/opus-COPYING.txt",
+      "licenses/openh264-LICENSE.txt": "licenses/openh264-LICENSE.txt"
+    },
+    "externalBin": [],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "installer/hooks.nsh"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "windows": {
+        "installMode": "passive"
+      },
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQwOEZCRDI4M0REMkM2RDUKUldUVnh0STlLTDJQUUFPNDEzRENXRGZJQ2VCWDkyeit2Q2g5N2NjV0pydU9EMFFGUUQvTzhQRmkK",
+      "endpoints": ["https://github.com/vnt-dev/vnt-remote/releases/latest/download/latest.json"]
+    }
+  }
+}
