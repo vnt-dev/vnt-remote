@@ -141,6 +141,7 @@ jobs:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY || 'vnt-dev/vnt-remote' }}
+      ANDROID_RELEASE_REPOSITORY: ${{ vars.ANDROID_RELEASE_REPOSITORY || 'vnt-dev/vnt-remote-app' }}
     steps:
       - uses: actions/checkout@v4
         with:
