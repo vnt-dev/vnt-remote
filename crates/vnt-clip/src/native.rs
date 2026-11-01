@@ -649,9 +649,15 @@ enum Command {
     Files(Arc<ClipboardOffer>, Arc<dyn FileProvider>, u32),
     Text(String, u32),
 }
+struct PasteJob {
+    text: String,
+    valid: ImageValidity,
+    reply: std::sync::mpsc::SyncSender<std::result::Result<(),String>>,
+}
 /// A single latest publication slot coalesces rapid changes without retaining old manifests.
 #[derive(Clone)]
 pub struct NativeClipboard {
+    paste: std::sync::mpsc::SyncSender<PasteJob>,
     pending: Arc<Mutex<Option<Command>>>,
     alive: Arc<AtomicBool>,
 }
@@ -669,6 +675,7 @@ impl NativeClipboard {
     fn start_impl(
         updates: Option<std::sync::mpsc::SyncSender<()>>,
     ) -> std::result::Result<Self, String> {
+        let (paste,pastes)=std::sync::mpsc::sync_channel::<PasteJob>(4);
         let pending = Arc::new(Mutex::new(None));
         let work = pending.clone();
         let alive = Arc::new(AtomicBool::new(true));
@@ -700,6 +707,25 @@ impl NativeClipboard {
                 let mut current: Option<IDataObject> = None;
                 while Arc::strong_count(&work) > 1 {
                     pump();
+                    if let Ok(job)=pastes.try_recv() {
+                        let result=(|| {
+                            let mut error=String::new();
+                            for _ in 0..20 {
+                                if !(job.valid)() {return Err("粘贴请求已取消或过期".into());}
+                                match crate::win::set_text(&job.text) {
+                                    Ok(()) => {
+                                        current=None;
+                                        if !(job.valid)() {return Err("粘贴请求已取消或过期".into());}
+                                        return vnt_input::paste_shortcut().map_err(|e|e.to_string());
+                                    },
+                                    Err(e)=>error=e.to_string(),
+                                }
+                                pump();std::thread::sleep(std::time::Duration::from_millis(5));
+                            }
+                            Err(error)
+                        })();
+                        let _=job.reply.send(result);
+                    }
                     let command = work.lock().unwrap().take();
                     if let Some(command) = command {
                         let sequence = match &command {
@@ -770,7 +796,14 @@ impl NativeClipboard {
             })
             .map_err(|e| e.to_string())?;
         ready_rx.recv().map_err(|e| e.to_string())??;
-        Ok(Self { pending, alive })
+        Ok(Self { pending, alive, paste })
+    }
+    /// Runs on the clipboard's user-desktop STA, after the text write succeeds.
+    pub fn paste_text(&self,text:String,valid:ImageValidity)->std::result::Result<(),String> {
+        if text.len()>vnt_proto::control::MAX_CLIPBOARD_TEXT {return Err("文本超过上限".into());}
+        let (reply,rx)=std::sync::mpsc::sync_channel(1);
+        self.paste.try_send(PasteJob{text,valid,reply}).map_err(|_|"粘贴队列已满或关闭".to_string())?;
+        rx.recv_timeout(std::time::Duration::from_secs(3)).map_err(|_|"粘贴执行超时".to_string())?
     }
     pub fn files(
         &self,

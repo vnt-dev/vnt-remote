@@ -968,3 +968,60 @@ async fn snapshot_changes_during_recovery_require_a_new_acknowledgement() {
     .await;
     assert!(record.deadline.lock().unwrap().is_none());
 }
+
+#[tokio::test]
+async fn paste_commands_are_not_queued_for_recovery() {
+    let now=Instant::now();
+    let (events,_events_rx)=mpsc::channel(4);
+    let (app_tx,_app_rx)=mpsc::channel(4);
+    let (writer,_receiver)=mpsc::channel(1);
+    let frame=|pts_ms| Msg::VideoFrame(pb::VideoFrame{dependencies:None,keyframe:true,pts_ms,data:vec![1]});
+    let mut supervisor = Supervisor {
+        server: None,
+        address: None,
+        id: 1,
+        secret: [0; 32],
+        record: None,
+        tcp_media: Arc::new(AtomicBool::new(true)),
+        traffic: TrafficCounters::default(),
+        events,
+        app: std::array::from_fn(|_| app_tx.clone()),
+        delivered_generations: std::array::from_fn(|_| Arc::new(AtomicU64::new(0))),
+        links: [
+            None,
+            None,
+            Some(Link {
+                tx: writer,
+                cancel: CancellationToken::new(),
+                generation: 1,
+            }),
+        ],
+        generations: [0, 0, 1],
+        lost: [None; 3],
+        next_retry: [now; 3],
+        attempts: [0; 3],
+        retrying: [false; 3],
+        pending: [None, None, Some(frame(2))],
+        requests: Default::default(),
+        awaiting: Default::default(),
+        snapshots: Default::default(),
+        snapshot_revision: 0,
+        sync_revision: 0,
+        ready_image: None,
+        media_config: Default::default(),
+        screen_snapshots: Default::default(),
+        screen_waiting: Default::default(),
+        open_screens: None,
+        media_needs_keyframe: false,
+        tasks: JoinSet::new(),
+        last_control_rx: now,
+        last_heartbeat: now,
+        last_app_status: now,
+    };
+    supervisor.lost[CONTROL]=Some(now);
+    let paste=Msg::ClipboardPaste(pb::ClipboardPaste{request_id:1,text:"never replay".into()});
+    assert!(supervisor.outgoing(paste.clone(),CONTROL).await.unwrap());
+    assert!(supervisor.outgoing(vnt_proto::screen::wrap(1,1,paste),CONTROL).await.unwrap());
+    assert!(supervisor.pending[CONTROL].is_none());
+    assert!(supervisor.snapshots.is_empty());
+}

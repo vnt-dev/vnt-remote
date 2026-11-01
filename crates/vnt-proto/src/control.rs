@@ -55,6 +55,8 @@ pub const HEADER_LEN: usize = 5;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ControlMessage {
+    ClipboardPaste(pb::ClipboardPaste),
+    ClipboardPasteResult(pb::ClipboardPasteResult),
     ScreenThrottle(pb::ScreenThrottle),
     VideoNack(pb::VideoNack),
     CursorPosition(pb::CursorPosition),
@@ -98,6 +100,8 @@ pub enum ControlMessage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum MessageType {
+    ClipboardPaste = 42,
+    ClipboardPasteResult = 43,
     ScreenThrottle = 41,
     VideoNack = 40,
     CursorPosition = 39,
@@ -179,6 +183,8 @@ impl ControlMessage {
             ControlMessage::ClipboardRequest(_) => MessageType::ClipboardRequest,
             ControlMessage::ClipboardReply(_) => MessageType::ClipboardReply,
             ControlMessage::ClipboardText(_) => MessageType::ClipboardText,
+            ControlMessage::ClipboardPaste(_) => MessageType::ClipboardPaste,
+            ControlMessage::ClipboardPasteResult(_) => MessageType::ClipboardPasteResult,
         }
     }
 
@@ -231,6 +237,8 @@ impl ControlMessage {
             }
             ControlMessage::ClipboardReply(m) => (MessageType::ClipboardReply, m.encode_to_vec()),
             ControlMessage::ClipboardText(m) => (MessageType::ClipboardText, m.encode_to_vec()),
+            ControlMessage::ClipboardPaste(m) => (MessageType::ClipboardPaste, m.encode_to_vec()),
+            ControlMessage::ClipboardPasteResult(m) => (MessageType::ClipboardPasteResult, m.encode_to_vec()),
         };
         let mut out = Vec::with_capacity(HEADER_LEN + body.len());
         out.push(ty as u8);
@@ -294,6 +302,8 @@ pub fn parse_header(header: &[u8; HEADER_LEN]) -> Result<(MessageType, usize), D
         19 => MessageType::ClipboardRequest,
         20 => MessageType::ClipboardReply,
         14 => MessageType::ClipboardText,
+        42 => MessageType::ClipboardPaste,
+        43 => MessageType::ClipboardPasteResult,
         other => return Err(DecodeError::UnknownType(other)),
     };
     let limit = match ty {
@@ -303,6 +313,8 @@ pub fn parse_header(header: &[u8; HEADER_LEN]) -> Result<(MessageType, usize), D
         MessageType::AudioFrame => crate::audio::MAX_AUDIO_PAYLOAD,
         MessageType::AudioState => 1040,
         MessageType::ClipboardText => MAX_CLIPBOARD_TEXT,
+        MessageType::ClipboardPaste => MAX_CLIPBOARD_TEXT + 32,
+        MessageType::ClipboardPasteResult => 1056,
         MessageType::ClipboardOffer => MAX_CLIPBOARD_FILES,
         _ => MAX_PAYLOAD,
     };
@@ -519,6 +531,20 @@ pub fn decode_message(ty: MessageType, body: &[u8]) -> Result<ControlMessage, De
                 return Err(DecodeError::Mismatch);
             }
             ControlMessage::ClipboardReply(value)
+        }
+        MessageType::ClipboardPaste => {
+            let m=pb::ClipboardPaste::decode(body)?;
+            if m.request_id==0 || !crate::validation::valid_clipboard_text(&m.text) {
+                return Err(DecodeError::Mismatch);
+            }
+            ControlMessage::ClipboardPaste(m)
+        }
+        MessageType::ClipboardPasteResult => {
+            let m=pb::ClipboardPasteResult::decode(body)?;
+            if m.request_id==0 || m.reason.len()>1024 {
+                return Err(DecodeError::Mismatch);
+            }
+            ControlMessage::ClipboardPasteResult(m)
         }
         MessageType::ClipboardText => {
             let text = pb::ClipboardText::decode(body)?;

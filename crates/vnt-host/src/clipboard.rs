@@ -33,6 +33,7 @@ pub const INBOUND_QUEUE: usize = 16;
 pub const OUT_QUEUE: usize = 8;
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_OPERATIONS: usize = 32;
+pub type PasteWriter = Arc<dyn Fn(String,vnt_clip::native::ImageValidity)->Result<(),String> + Send + Sync>;
 type ClipboardWriter = Arc<dyn Fn(ClipboardContent, Vec<PathBuf>) + Send + Sync>;
 pub type NativePublisher = Arc<
     dyn Fn(Arc<pb::ClipboardOffer>, Arc<dyn FileProvider>, u32) -> Result<(), String> + Send + Sync,
@@ -125,6 +126,10 @@ impl Progress {
     }
 }
 struct SessionEntry {
+    remote_paste: AtomicBool,
+    last_paste: AtomicU32,
+    paste_epoch: AtomicU64,
+    paste_received: Mutex<HashMap<u32,(Instant,u64)>>,
     capabilities: u32,
     file_supported: AtomicBool,
     key: u64,
@@ -264,6 +269,7 @@ impl SessionEntry {
         self.received_image.store(0, Ordering::Release);
         self.retire_offer();
         self.epoch.fetch_add(1, Ordering::AcqRel);
+        self.paste_epoch.fetch_add(1,Ordering::AcqRel);
         self.image.lock().unwrap().take();
         self.image_decode.lock().unwrap().take();
         self.source_offer.lock().unwrap().take();
@@ -315,6 +321,7 @@ struct Inner {
     ids: Arc<AtomicU32>,
     generation: AtomicU64,
     writer: ClipboardWriter,
+    paste_writer: Mutex<Option<PasteWriter>>,
     publisher: NativePublisher,
     remote_current: Mutex<Option<Weak<RemoteOffer>>>,
 }
@@ -334,6 +341,7 @@ impl ClipboardService {
         let (native, updates) = NativeClipboard::start_with_updates()?;
         let text = native.clone();
         let images = native.clone();
+        let paste = native.clone();
         let service = Self::with_publishers(
             Arc::new(move |content, _| {
                 if let ClipboardContent::Text(value) = content {
@@ -346,12 +354,19 @@ impl ClipboardService {
             Some(Arc::new(move |image, sequence, valid| {
                 images.image(image, sequence, valid)
             }));
+        *service.inner.paste_writer.lock().unwrap()=Some(Arc::new(move |text,valid|paste.paste_text(text,valid)));
         service.spawn_watcher(updates)?;
         Ok(service)
     }
     /// Text-only test adapter; never touches the real desktop clipboard.
     pub fn with_writer(writer: ClipboardWriter) -> Arc<Self> {
         Self::with_publishers(writer, Arc::new(|_, _, _| Ok(())))
+    }
+    /// Platform/test adapter whose paste operation confirms clipboard write and OS paste.
+    pub fn with_text_paster(writer:ClipboardWriter,paste:PasteWriter)->Arc<Self> {
+        let service=Self::with_writer(writer);
+        *service.inner.paste_writer.lock().unwrap()=Some(paste);
+        service
     }
     pub fn with_publishers(writer: ClipboardWriter, publisher: NativePublisher) -> Arc<Self> {
         Arc::new(Self {
@@ -369,6 +384,7 @@ impl ClipboardService {
                 ids: Arc::new(AtomicU32::new(1)),
                 generation: AtomicU64::new(0),
                 writer,
+                paste_writer: Mutex::new(None),
                 publisher,
                 remote_current: Mutex::new(None),
             }),
@@ -442,7 +458,9 @@ impl ClipboardService {
     }
     pub fn control_changed(&self, key: u64, available: bool) {
         if let Some(entry) = self.inner.sessions.lock().unwrap().get(&key) {
-            entry.control_online.store(available, Ordering::Release);
+            if entry.control_online.swap(available, Ordering::AcqRel) && !available {
+                entry.paste_epoch.fetch_add(1,Ordering::AcqRel);
+            }
         }
     }
 
@@ -495,6 +513,17 @@ impl ClipboardService {
             false
         }
     }
+    pub fn cancel_remote_paste(&self,key:u64) {
+        if let Some(entry)=self.inner.sessions.lock().unwrap().get(&key) {
+            entry.paste_epoch.fetch_add(1,Ordering::AcqRel);
+        }
+    }
+    /// Only host/user-desktop registrations accept commands that inject paste.
+    pub fn allow_remote_paste(&self,key:u64) {
+        if let Some(entry)=self.inner.sessions.lock().unwrap().get(&key) {
+            entry.remote_paste.store(true,Ordering::Release);
+        }
+    }
     pub fn register(self: &Arc<Self>, spec: SessionSpec) -> ClipboardRegistration {
         *self.inner.runtime.lock().unwrap() = Some(tokio::runtime::Handle::current());
         // GUI controller and portable host have independent policies, but their
@@ -502,6 +531,10 @@ impl ClipboardService {
         static NEXT_KEY: AtomicU64 = AtomicU64::new(1);
         let key = NEXT_KEY.fetch_add(1, Ordering::Relaxed);
         let entry = Arc::new(SessionEntry {
+            remote_paste: AtomicBool::new(false),
+            last_paste: AtomicU32::new(0),
+            paste_epoch: AtomicU64::new(0),
+            paste_received: Mutex::new(HashMap::new()),
             capabilities: spec.capabilities,
             file_supported: AtomicBool::new(
                 spec.capabilities & vnt_proto::CAP_FILES != 0 && cfg!(windows),
@@ -1175,6 +1208,27 @@ async fn receiver_loop(
             continue;
         }, message = rx.recv() => match message { Some(m) => m, None => break } };
         match message {
+            ControlMessage::ClipboardPaste(request) => {
+                let inner=inner.clone();let job_entry=entry.clone();let request_id=request.request_id;
+                let Some((received,epoch))=entry.paste_received.lock().unwrap().remove(&request_id) else {continue;};
+                let result=tokio::task::spawn_blocking(move || {
+                    let check_entry=job_entry.clone();let check_inner=inner.clone();
+                    let valid: vnt_clip::native::ImageValidity=Arc::new(move ||
+                        received.elapsed()<Duration::from_secs(2)
+                        && check_inner.enabled.load(Ordering::Acquire)
+                        && check_entry.remote_paste.load(Ordering::Acquire)
+                        && check_entry.control_online.load(Ordering::Acquire)
+                        && check_entry.paste_epoch.load(Ordering::Acquire)==epoch && check_entry.active());
+                    let _guard=inner.publication.lock().unwrap();
+                    if !valid() {return Err("当前会话不能粘贴，或请求已过期".into());}
+                    let paste=inner.paste_writer.lock().unwrap().clone().ok_or("当前被控端未提供粘贴功能")?;
+                    inner.invalidate_locked();
+                    paste(request.text,valid)
+                }).await.unwrap_or_else(|_|Err("粘贴工作线程失败".into()));
+                let _=entry.control(ControlMessage::ClipboardPasteResult(pb::ClipboardPasteResult{
+                    request_id,success:result.is_ok(),reason:result.err().map(|e|reason(&e)).unwrap_or_default(),
+                }));
+            }
             ControlMessage::ClipboardText(text)
                 if inner.enabled.load(Ordering::Acquire) && entry.active() =>
             {
@@ -1572,6 +1626,20 @@ pub async fn dispatch_inbound(
     if !permits(&message, entry.capabilities) {
         return Ok(());
     }
+    if let ControlMessage::ClipboardPaste(request)=&message {
+        let id=request.request_id;
+        let fresh=id!=0 && entry.last_paste.try_update(Ordering::AcqRel,Ordering::Acquire,|previous|(id>previous).then_some(id)).is_ok();
+        if !fresh || !entry.remote_paste.load(Ordering::Acquire) || !entry.active() || !entry.control_online.load(Ordering::Acquire) {
+            let _=entry.control(ControlMessage::ClipboardPasteResult(pb::ClipboardPasteResult{request_id:id,success:false,reason:"当前会话不能粘贴，或请求已过期".into()}));
+            return Ok(());
+        }
+        entry.paste_received.lock().unwrap().insert(id,(Instant::now(),entry.paste_epoch.load(Ordering::Acquire)));
+        if tx.try_send(message).is_err() {
+            entry.paste_received.lock().unwrap().remove(&id);
+            let _=entry.control(ControlMessage::ClipboardPasteResult(pb::ClipboardPasteResult{request_id:id,success:false,reason:"粘贴队列已满".into()}));
+        }
+        return Ok(());
+    }
     if let ControlMessage::ClipboardReply(reply) = message {
         entry.reply(reply);
         return Ok(());
@@ -1582,6 +1650,7 @@ pub async fn dispatch_inbound(
             | ControlMessage::ClipboardImageChunk(_)
             | ControlMessage::ClipboardImageCancel(_)
             | ControlMessage::ClipboardText(_)
+            | ControlMessage::ClipboardPaste(_)
             | ControlMessage::ClipboardOffer(_)
     ) {
         return tokio::select! {
@@ -1598,7 +1667,7 @@ pub async fn dispatch_inbound(
 
 fn permits(message: &ControlMessage, capabilities: u32) -> bool {
     let required = match message {
-        ControlMessage::ClipboardText(_) => vnt_proto::CAP_TEXT,
+        ControlMessage::ClipboardText(_) | ControlMessage::ClipboardPaste(_) | ControlMessage::ClipboardPasteResult(_) => vnt_proto::CAP_TEXT,
         ControlMessage::ClipboardImage(_)
         | ControlMessage::ClipboardImageChunk(_)
         | ControlMessage::ClipboardImageCancel(_) => vnt_proto::CAP_IMAGE,
@@ -2495,5 +2564,64 @@ mod platform_tests {
         assert!(control.try_recv().is_err());
         drop(registration);
         assert!(!service.session_enabled(key));
+    }
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::*;
+    fn register(service:&Arc<ClipboardService>,enabled:bool)->(ClipboardRegistration,mpsc::Sender<ControlMessage>,mpsc::Receiver<ControlMessage>) {
+        let (out,rx)=mpsc::channel(16);let (tx,input)=mpsc::channel(4);
+        let registration=service.register(SessionSpec{capabilities:vnt_proto::CAP_TEXT,session_id:1,file_tx:out.clone(),control_tx:out,in_rx:input,session_cancel:CancellationToken::new(),sink:Arc::new(crate::NoopEventSink),enabled});
+        (registration,tx,rx)
+    }
+    async fn send(service:&ClipboardService,key:u64,tx:&mpsc::Sender<ControlMessage>,id:u32) {
+        dispatch_inbound(service,key,tx,ControlMessage::ClipboardPaste(pb::ClipboardPaste{request_id:id,text:"中文🙂".into()})).await.unwrap();
+    }
+    async fn reply(rx:&mut mpsc::Receiver<ControlMessage>)->pb::ClipboardPasteResult {
+        let message=tokio::time::timeout(Duration::from_secs(3),rx.recv()).await.unwrap().unwrap();
+        let ControlMessage::ClipboardPasteResult(result)=message else {panic!("unexpected message")};result
+    }
+    #[tokio::test]
+    async fn confirms_paste_and_rejects_duplicates_or_controller_role() {
+        let log=Arc::new(Mutex::new(vec![]));let events=log.clone();
+        let service=ClipboardService::with_text_paster(Arc::new(|_,_|{}),Arc::new(move |text,valid|{assert!(valid());events.lock().unwrap().push(text);Ok(())}));
+        let (guard,tx,mut rx)=register(&service,true);
+        send(&service,guard.key(),&tx,1).await;
+        assert!(!reply(&mut rx).await.success); // controller cannot inject input
+        service.allow_remote_paste(guard.key());
+        send(&service,guard.key(),&tx,2).await;assert!(reply(&mut rx).await.success);
+        send(&service,guard.key(),&tx,2).await;assert!(!reply(&mut rx).await.success);
+        assert_eq!(*log.lock().unwrap(),vec!["中文🙂"]);
+    }
+    #[tokio::test]
+    async fn denies_disabled_and_offline_sessions_and_reports_native_failure() {
+        let service=ClipboardService::with_text_paster(Arc::new(|_,_|{}),Arc::new(|_,_|Err("write failed".into())));
+        let (guard,tx,mut rx)=register(&service,false);service.allow_remote_paste(guard.key());
+        send(&service,guard.key(),&tx,1).await;assert!(!reply(&mut rx).await.success);
+        service.set_session_enabled(guard.key(),true);service.control_changed(guard.key(),false);
+        send(&service,guard.key(),&tx,2).await;assert!(!reply(&mut rx).await.success);
+        service.control_changed(guard.key(),true);
+        send(&service,guard.key(),&tx,3).await;assert_eq!(reply(&mut rx).await.reason,"write failed");
+    }
+    #[tokio::test]
+    async fn queued_paste_expires_and_cannot_survive_channel_recovery() {
+        let service=ClipboardService::with_text_paster(Arc::new(|_,_|{}),Arc::new(|_,_|panic!("stale request executed")));
+        let (guard,_tx,mut rx)=register(&service,true);service.allow_remote_paste(guard.key());
+        let entry=service.inner.sessions.lock().unwrap()[&guard.key()].clone();
+        let (queued,mut received)=mpsc::channel(4);
+        send(&service,guard.key(),&queued,1).await;
+        entry.paste_received.lock().unwrap().get_mut(&1).unwrap().0=Instant::now()-Duration::from_secs(3);
+        let message=received.recv().await.unwrap();
+        // Send the pre-registered request straight to the receiver, preserving its receipt deadline.
+        let (actual_tx,actual_rx)=mpsc::channel(4);
+        actual_tx.send(message).await.unwrap();
+        let task=tokio::spawn(receiver_loop(service.inner.clone(),entry.clone(),actual_rx));
+        assert!(!reply(&mut rx).await.success);
+        send(&service,guard.key(),&queued,2).await;
+        service.control_changed(guard.key(),false);service.control_changed(guard.key(),true);
+        actual_tx.send(received.recv().await.unwrap()).await.unwrap();
+        assert!(!reply(&mut rx).await.success);
+        task.abort();
     }
 }

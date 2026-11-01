@@ -2,7 +2,7 @@ fn main() {
     let source = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor/opus");
     // Match upstream Makefile.unix's portable floating-point source set. macOS
     // needs only Apple's C toolchain; Windows retains its existing CMake build.
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+    if matches!(std::env::var("CARGO_CFG_TARGET_OS").as_deref(), Ok("macos" | "android")) {
         let mut build = cc::Build::new();
         build
             .opt_level(3)

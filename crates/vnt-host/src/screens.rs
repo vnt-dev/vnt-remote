@@ -685,7 +685,8 @@ pub async fn serve<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Sen
                             if let Some(w)=workers.iter_mut().find(|w|w.open && !w.closing && w.target.info.stream_id==packet.stream_id && w.target.info.generation==packet.generation) {
                                 if let Msg::ScreenThrottle(state)=&inner {w.background=state.background;}
                                 if let Msg::LinkFeedback(report)=&inner {if let Some(fec)=&fec {fec.feedback(report);}}
-                                if matches!(inner,Msg::InputEvent(_)|Msg::ResetInput(_)) && (packet.stream_id!=active || packet.revision!=revision) {continue;}
+                                if matches!(inner,Msg::InputEvent(_)|Msg::ResetInput(_)|Msg::ClipboardPaste(_)) && (packet.stream_id!=active || packet.revision!=revision) {continue;}
+                                if matches!(inner,Msg::ClipboardPaste(_)) {workers[owner].send(inner);continue;}
                                 if matches!(inner,Msg::InputEvent(_)|Msg::ResetInput(_)|Msg::LinkFeedback(_)|Msg::RequestKeyframe|Msg::ScreenThrottle(_)) {w.send(inner);}
                             }
                         }
@@ -697,7 +698,7 @@ pub async fn serve<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Sen
                         if workers.iter().any(|w|w.open && !w.closing && w.target.info.stream_id==nack.stream_id && w.target.info.generation==nack.generation) { if let Some(repair)=&video_repair {repair.request(nack);} }
                     }
                     Msg::RequestKeyframe=>{for w in workers.iter().filter(|w|w.open && !w.closing){w.send(Msg::RequestKeyframe);}}
-                    Msg::InputEvent(_)=>{} // Inputs must name the viewed stream.
+                    Msg::InputEvent(_)|Msg::ClipboardPaste(_)=>{} // Inputs must name the viewed stream.
                     Msg::LinkFeedback(report)=>{if let Some(fec)=&fec{fec.feedback(&report);}}
                     other=>{workers[owner].send(other);}
                 }
@@ -742,6 +743,8 @@ pub async fn serve<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Sen
                 } else if let Msg::SessionEnd(end)=msg {
                     w.stop_backend();w.target.info.available=false;w.target.info.reason=end.reason;w.retry=tokio::time::Instant::now()+Duration::from_secs(1);revision+=1;
                     writer.send_owned(state(&workers,active,revision)).await.map_err(|e|e.to_string())?;
+                } else if matches!(msg,Msg::ClipboardPasteResult(_)) {
+                    writer.send_owned(msg).await.map_err(|e|e.to_string())?;
                 } else if i==owner && !matches!(msg,Msg::Pong(_)|Msg::Welcome(_)) {
                     if matches!(msg,Msg::ClipboardReply(_)|Msg::ClipboardImageChunk(_)){
                         if let Some(tx)=&workers[i].file_tx{tx.try_send(msg).map_err(|_|"文件转发通道已关闭")?;}

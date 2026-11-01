@@ -414,6 +414,7 @@ pub(super) async fn user_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
         sink: Arc::new(crate::NoopEventSink),
         enabled: clipboard.is_enabled() && !h.audio_enabled,
     });
+    if boot.config.allow_control {clipboard.allow_remote_paste(registration.key());}
     // The broker must not publish this channel until its clipboard receiver is
     // registered. The media handshake alone does not make the user agent ready.
     writer
@@ -469,7 +470,7 @@ pub(super) async fn user_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
             msg=reader.recv()=>{
                 match msg {
                     Ok(Some(
-                        msg @ (ControlMessage::ClipboardImageReady(_) | ControlMessage::ClipboardImage(_) | ControlMessage::ClipboardImageChunk(_) | ControlMessage::ClipboardImageCancel(_) | ControlMessage::ClipboardText(_)
+                        msg @ (ControlMessage::ClipboardImageReady(_) | ControlMessage::ClipboardImage(_) | ControlMessage::ClipboardImageChunk(_) | ControlMessage::ClipboardImageCancel(_) | ControlMessage::ClipboardText(_) | ControlMessage::ClipboardPaste(_)
                         | ControlMessage::ClipboardOffer(_)
                         | ControlMessage::ClipboardRequest(_)
                         | ControlMessage::ClipboardReply(_)),
@@ -478,6 +479,7 @@ pub(super) async fn user_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
                             .await
                             .map_err(anyhow::Error::msg)?;
                     }
+                    Ok(Some(ControlMessage::ResetInput(_))) => {clipboard.cancel_remote_paste(registration.key());}
                     Ok(Some(ControlMessage::TransportState(state))) => {
                         if state.kind == 1 { clipboard.transport_changed(registration.key(), state.available); }
                         if state.kind == 0 { clipboard.control_changed(registration.key(), state.available); }

@@ -10,6 +10,7 @@ png = "0.18"
 thiserror = { workspace = true }
 log = { workspace = true }
 vnt-proto = { workspace = true }
+vnt-input = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true }

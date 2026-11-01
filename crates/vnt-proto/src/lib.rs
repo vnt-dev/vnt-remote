@@ -114,3 +114,12 @@ pub fn platform_capabilities() -> u32 {
             0
         }
 }
+
+/// Platform-independent application notifications. Never include credentials.
+pub trait EventSink: Send + Sync + 'static {
+    fn emit_json(&self, event: &str, payload_json: String);
+}
+pub struct NoopEventSink;
+impl EventSink for NoopEventSink {
+    fn emit_json(&self, _: &str, _: String) {}
+}

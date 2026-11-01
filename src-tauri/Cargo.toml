@@ -13,6 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+vnt-client = { path = "../crates/vnt-client" }
 vnt-host = { path = "../crates/vnt-host" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-updater = "2"

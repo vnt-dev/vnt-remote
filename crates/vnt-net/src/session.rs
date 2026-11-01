@@ -904,6 +904,9 @@ impl Supervisor {
                 }
             }
         }
+        if is_paste(&msg) && (self.lost[CONTROL].is_some() || self.links[CONTROL].is_none()) {
+            return Ok(true); // A paste must never wait for channel recovery.
+        }
         if matches!(msg, Msg::TransportState(_) | Msg::ResetInput(_)) {
             return Err(error("local event sent to remote"));
         }
@@ -993,7 +996,7 @@ impl Supervisor {
         if kind == CONTROL {
             self.last_control_rx = Instant::now();
         }
-        if self.lost[CONTROL].is_some() && matches!(&msg, Msg::InputEvent(_)) {
+        if self.lost[CONTROL].is_some() && (matches!(&msg, Msg::InputEvent(_)) || is_paste(&msg)) {
             return Ok(());
         }
         if let Msg::SessionPacket(p) = msg {
@@ -1030,7 +1033,7 @@ impl Supervisor {
                 }
             }
         }
-        if matches!(&msg, Msg::InputEvent(_)) {
+        if matches!(&msg, Msg::InputEvent(_)) || is_paste(&msg) {
             return self.app[CONTROL]
                 .try_send(Delivery {
                     generation: Some(self.generations[CONTROL]),
@@ -1531,3 +1534,7 @@ impl Supervisor {
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+fn is_paste(message:&Msg)->bool {
+    matches!(message,Msg::ClipboardPaste(_)) || matches!(message,Msg::ScreenPacket(p) if vnt_proto::screen::kind(p)==Some(vnt_proto::control::MessageType::ClipboardPaste))
+}

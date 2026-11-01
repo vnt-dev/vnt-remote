@@ -1453,6 +1453,7 @@ async fn handle_channel<
         enabled: clipboard_enabled && !view_only,
     });
     let clipboard_key = clipboard_guard.key();
+    if !view_only {clipboard.allow_remote_paste(clipboard_key);}
     if let Some(portable) = &portable {
         clipboard.control_changed(clipboard_key, portable.available());
     }
@@ -2003,6 +2004,7 @@ async fn handle_channel<
                     .await;
             }
             Ok(Some(ControlMessage::ResetInput(_))) => {
+                clipboard.cancel_remote_paste(clipboard_key);
                 held.release_all(&*injector);
             }
             Ok(Some(ControlMessage::TransportState(state))) => {
@@ -2105,6 +2107,7 @@ async fn handle_channel<
                 | ControlMessage::ClipboardImageChunk(_)
                 | ControlMessage::ClipboardImageCancel(_)
                 | ControlMessage::ClipboardText(_)
+                | ControlMessage::ClipboardPaste(_)
                 | ControlMessage::ClipboardOffer(_)
                 | ControlMessage::ClipboardRequest(_)
                 | ControlMessage::ClipboardReply(_)),

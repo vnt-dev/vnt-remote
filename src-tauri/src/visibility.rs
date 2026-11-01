@@ -1,66 +1,12 @@
-//! Native visibility polling keeps working while minimized WebViews are suspended.
+//! Desktop window visibility adapter.
 use std::{
     collections::{HashMap, HashSet},
     time::{Duration, Instant},
 };
 use tauri::Manager;
+#[cfg(test)]
+use vnt_client::visibility::Visibility;
 use vnt_proto::{control::ControlMessage as Msg, pb, screen};
-
-#[derive(Default)]
-struct StreamState {
-    hidden_since: Option<Instant>,
-    sent: Option<(u32, bool)>,
-}
-
-#[derive(Default)]
-pub(crate) struct Visibility {
-    reports: HashMap<String, u32>,
-    streams: HashMap<u32, StreamState>,
-}
-
-impl Visibility {
-    fn reconcile(
-        &mut self,
-        screens: &[(u32, u32, bool)],
-        visible: &HashSet<u32>,
-        online: bool,
-        now: Instant,
-    ) -> Vec<(u32, u32, bool)> {
-        self.streams
-            .retain(|id, _| screens.iter().any(|s| s.0 == *id));
-        let mut updates = Vec::new();
-        for &(id, generation, available) in screens {
-            let state = self.streams.entry(id).or_default();
-            if visible.contains(&id) {
-                state.hidden_since = None;
-            } else {
-                state.hidden_since.get_or_insert(now);
-            }
-            let background = state
-                .hidden_since
-                .is_some_and(|since| now.duration_since(since) > Duration::from_secs(5));
-            if !online || !available {
-                state.sent = None;
-            } else if state.sent != Some((generation, background)) {
-                updates.push((id, generation, background));
-            }
-        }
-        updates
-    }
-
-    fn sent(&mut self, id: u32, generation: u32, background: bool) {
-        if let Some(state) = self.streams.get_mut(&id) {
-            state.sent = Some((generation, background));
-        }
-    }
-
-    pub(crate) fn invalidate(&mut self) {
-        for state in self.streams.values_mut() {
-            state.sent = None;
-        }
-    }
-}
-
 fn viewed_streams(
     owner: &str,
     main_stream: u32,
@@ -317,7 +263,7 @@ mod tests {
             state.reconcile(&[(2, 2, true)], &HashSet::new(), true, later),
             [(2, 2, true)]
         );
-        assert!(!state.streams.contains_key(&1));
+        assert!(!state.has_stream(1));
         state.sent(2, 2, true);
         state.invalidate();
         assert_eq!(

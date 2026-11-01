@@ -718,6 +718,7 @@ fn clipboard(m: &ControlMessage) -> bool {
             | ControlMessage::ClipboardImageChunk(_)
             | ControlMessage::ClipboardImageCancel(_)
             | ControlMessage::ClipboardText(_)
+            | ControlMessage::ClipboardPasteResult(_)
             | ControlMessage::ClipboardOffer(_)
             | ControlMessage::ClipboardRequest(_)
             | ControlMessage::ClipboardReply(_)
@@ -1309,6 +1310,18 @@ async fn session(
                         let desktop = media.as_ref().map(|w| w.metadata.desktop.as_str()).unwrap_or("");
                         send(&mut remote, &desktop_state(ready, desktop, &reason, generation)).await?;
                     }
+                    ControlMessage::ClipboardPaste(request) => {
+                        // Commands are never remembered/replayed when the user agent reconnects.
+                        let message=ControlMessage::ClipboardPaste(request.clone());
+                        let available=cfg.allow_control && cfg.clipboard && ready && !video_closed
+                            && media.as_ref().is_some_and(|w|w.metadata.desktop.eq_ignore_ascii_case("default"));
+                        let delivered=if available {
+                            if let Some(u)=user.as_mut() {send(&mut u.channel,&message).await.is_ok()} else {false}
+                        } else {false};
+                        if !delivered {send(&mut remote,&ControlMessage::ClipboardPasteResult(pb::ClipboardPasteResult{
+                            request_id:request.request_id,success:false,reason:"当前桌面不可用或不允许粘贴".into(),
+                        })).await?;}
+                    }
                     ref msg if clipboard(msg) && cfg.allow_control && cfg.clipboard => {
                         if (ready || video_closed) && media.as_ref().is_some_and(|w| w.metadata.desktop.eq_ignore_ascii_case("default")) {
                             if pending_clipboard.image.is_some() && matches!(msg,
@@ -1343,6 +1356,7 @@ async fn session(
                         if nack.stream_id == 0 { if let Some(repair) = &video_repair { repair.request(nack); } }
                     }
                     ControlMessage::ResetInput(reset) => {
+                        if let Some(u)=user.as_mut(){let _=send(&mut u.channel,&ControlMessage::ResetInput(reset.clone())).await;}
                         if let Some(w)=media.as_mut(){send(&mut w.channel,&ControlMessage::ResetInput(reset)).await?;}
                     }
                     ControlMessage::ScreenThrottle(state) => {

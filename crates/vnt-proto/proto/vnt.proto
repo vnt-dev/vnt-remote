@@ -439,3 +439,15 @@ message AgentMessage {
  DesktopState input_feedback = 6;
  }
 }
+
+// One-shot controller -> host command. Never replay after channel recovery.
+// The host writes text before invoking its own OS paste shortcut.
+message ClipboardPaste {
+  uint32 request_id = 1;
+  string text = 2;
+}
+message ClipboardPasteResult {
+  uint32 request_id = 1;
+  bool success = 2;
+  string reason = 3;
+}

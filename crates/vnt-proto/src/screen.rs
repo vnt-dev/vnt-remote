@@ -39,6 +39,7 @@ pub fn kind(packet: &pb::ScreenPacket) -> Option<crate::control::MessageType> {
             | T::ScreenThrottle
             | T::RequestKeyframe
             | T::InputEvent
+            | T::ClipboardPaste
             | T::ResetInput
     ) {
         return None;

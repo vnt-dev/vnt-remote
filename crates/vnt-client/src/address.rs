@@ -1,7 +1,7 @@
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
-pub(super) const ADDRESS_ERROR: &str = "地址格式无效，请输入 IP 或域名，可附加 :端口（1–65535），默认端口 29875；IPv6 带端口时使用 [地址]:端口";
+pub const ADDRESS_ERROR: &str = "地址格式无效，请输入 IP 或域名，可附加 :端口（1–65535），默认端口 29875；IPv6 带端口时使用 [地址]:端口";
 
 pub(super) fn valid_host(host: &str) -> bool {
     if host.parse::<IpAddr>().is_ok() {

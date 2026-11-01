@@ -1,7 +1,7 @@
 //! Low latency system audio. Native COM objects and codec states stay on their owner threads.
 mod format;
-mod jitter;
-mod opus;
+pub mod jitter;
+pub mod opus;
 mod playback;
 #[cfg(windows)]
 mod win;
