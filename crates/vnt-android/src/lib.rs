@@ -126,7 +126,7 @@ struct Request {
 #[serde(tag = "op", rename_all = "camelCase")]
 enum Command {
     Connect {
-        request: Request,
+        request: Box<Request>,
     },
     Disconnect,
     Configure {
@@ -164,7 +164,7 @@ enum Command {
     },
 }
 enum Internal {
-    Connected(u64, Result<(ClientHandle, ClientSessionInfo), String>),
+    Connected(u64, Box<Result<(ClientHandle, ClientSessionInfo), String>>),
     Closed(u64),
     DecoderFailed(u64, String, String),
 }
@@ -270,7 +270,7 @@ fn start_connect(
             vnt_client::connect_with(events,params,clipboard,outputs,prepared).await
         };
         let result=tokio::select!{biased;_ = pending.cancelled()=>return,result=tokio::time::timeout(Duration::from_secs(30),connect)=>result.unwrap_or_else(|_|Err("连接或握手超时".into()))};
-        let _=internal.send(Internal::Connected(epoch,result));
+        let _=internal.send(Internal::Connected(epoch,Box::new(result)));
     });
     Ok(request)
 }
@@ -296,7 +296,7 @@ async fn actor(
             Some(reply)=replies.recv()=>match reply{
                 Internal::Connected(epoch,result)=>{
                     if owner.epoch.load(Ordering::Acquire)!=epoch{drop(result);continue;}
-                    match result {Ok((handle,info))=>{let mut v=serde_json::to_value(&info).unwrap();v["epoch"]=epoch.into();v["clipboardEnabled"]=(info.clipboard_enabled && info.capabilities & vnt_proto::CAP_TEXT != 0).into();session=Some((handle,info));owner.callback.emit_json("client://connected",v.to_string());},Err(reason)=>{owner.renderer.end();owner.callback.emit_json("client://closed",json!({"epoch":epoch,"reason":reason}).to_string());}}
+                    match *result {Ok((handle,info))=>{let mut v=serde_json::to_value(&info).unwrap();v["epoch"]=epoch.into();v["clipboardEnabled"]=(info.clipboard_enabled && info.capabilities & vnt_proto::CAP_TEXT != 0).into();session=Some((handle,info));owner.callback.emit_json("client://connected",v.to_string());},Err(reason)=>{owner.renderer.end();owner.callback.emit_json("client://closed",json!({"epoch":epoch,"reason":reason}).to_string());}}
                 }
                 Internal::Closed(epoch)=>{if owner.epoch.load(Ordering::Acquire)==epoch{session.take();owner.renderer.end();owner.audio.foreground(false);}}
                 Internal::DecoderFailed(epoch,name,reason)=>{
@@ -311,7 +311,7 @@ async fn actor(
             },
             Some(command)=commands.recv()=>{
                 let result:Result<(),String>=async {match command {
-                    Command::Connect{request:next}=>{pending.cancel();owner.epoch.fetch_add(1,Ordering::AcqRel);session.take();owner.renderer.end();owner.audio.foreground(visible);pending=CancellationToken::new();throttles.clear();request=Some(start_connect(&owner,links.clone(),clipboard.clone(),next,internal.clone(),pending.clone())?);}
+                    Command::Connect{request:next}=>{pending.cancel();owner.epoch.fetch_add(1,Ordering::AcqRel);session.take();owner.renderer.end();owner.audio.foreground(visible);pending=CancellationToken::new();throttles.clear();request=Some(start_connect(&owner,links.clone(),clipboard.clone(),*next,internal.clone(),pending.clone())?);}
                     Command::Disconnect=>{pending.cancel();let epoch=owner.epoch.fetch_add(1,Ordering::AcqRel);session.take();request=None;owner.renderer.end();owner.audio.foreground(false);clipboard.clear();owner.callback.emit_json("client://closed",json!({"epoch":epoch,"reason":"已断开"}).to_string());}
                     Command::Configure{profiles}=>{links.configure(profiles).await?;}
                     Command::Foreground{visible:next}=>{
@@ -345,7 +345,7 @@ async fn actor(
                 if let Some((handle,_))=&session {
                     if visible&&last_key.elapsed()>=Duration::from_millis(500)&&owner.renderer.keyframe_needed(){let _=request_keyframe(handle);last_key=Instant::now();}
                     let state=handle.screens.lock().unwrap().clone();
-                    if handle.control_available(){for screen in &state.screens{let background=!visible||screen.stream_id!=state.active_stream_id;let value=(screen.generation,background);if throttles.get(&screen.stream_id)!=Some(&value){if handle.control_tx.try_send(vnt_proto::screen::wrap(screen.stream_id,screen.generation,ControlMessage::ScreenThrottle(pb::ScreenThrottle{background}))).is_ok(){throttles.insert(screen.stream_id,value);}}}}else{throttles.clear();}
+                    if handle.control_available(){for screen in &state.screens{let background=!visible||screen.stream_id!=state.active_stream_id;let value=(screen.generation,background);if throttles.get(&screen.stream_id)!=Some(&value)&&handle.control_tx.try_send(vnt_proto::screen::wrap(screen.stream_id,screen.generation,ControlMessage::ScreenThrottle(pb::ScreenThrottle{background}))).is_ok(){throttles.insert(screen.stream_id,value);}}}else{throttles.clear();}
                 }
                 if last_report.elapsed()>=Duration::from_secs(1){last_report=Instant::now();let mut stats=owner.renderer.stats();stats["epoch"]=owner.epoch.load(Ordering::Acquire).into();owner.callback.emit_json("client://renderStats",stats.to_string());owner.callback.emit_json("client://networks",serde_json::to_string(&links.snapshot().await).unwrap());}
             }
@@ -577,11 +577,11 @@ pub extern "system" fn Java_com_rustvnt_remote_NativeBridge_nativeInput(
     })
 }
 fn decode_input(bytes: &[u8]) -> Result<Vec<InputArg>, String> {
-    if bytes.is_empty() || bytes.len() % 24 != 0 || bytes.len() > 64 * 24 {
+    if bytes.is_empty() || !bytes.len().is_multiple_of(24) || bytes.len() > 64 * 24 {
         return Err("输入缓冲格式无效".into());
     }
     let mut events = Vec::with_capacity(bytes.len() / 24);
-    for r in bytes.chunks_exact(24) {
+    for r in bytes.as_chunks::<24>().0 {
         let i = |n: usize| i32::from_le_bytes(r[n..n + 4].try_into().unwrap());
         let f = |n: usize| f32::from_le_bytes(r[n..n + 4].try_into().unwrap());
         let event = match i(0) {

@@ -137,6 +137,7 @@ impl Renderer {
         s.revision += 1;
         self.shared.wake.notify_all();
     }
+    #[cfg(any(target_os = "android", test))]
     pub fn surface(&self, window: Option<Window>) {
         let mut s = self.shared.state.lock().unwrap();
         // A SurfaceView layout/zoom callback can refer to the same native window.
@@ -491,14 +492,14 @@ mod surface_tests {
     use super::*;
     #[test]
     fn resizing_the_same_window_does_not_reset_the_decoder_revision() {
-        let renderer=Renderer::new(30);
+        let renderer = Renderer::new(30);
         renderer.surface(Some(Window(1)));
-        let revision=renderer.shared.state.lock().unwrap().revision;
+        let revision = renderer.shared.state.lock().unwrap().revision;
         renderer.surface(Some(Window(1)));
-        assert_eq!(renderer.shared.state.lock().unwrap().revision,revision);
+        assert_eq!(renderer.shared.state.lock().unwrap().revision, revision);
         renderer.surface(Some(Window(2)));
-        assert_eq!(renderer.shared.state.lock().unwrap().revision,revision+1);
+        assert_eq!(renderer.shared.state.lock().unwrap().revision, revision + 1);
         renderer.surface(None);
-        assert_eq!(renderer.shared.state.lock().unwrap().revision,revision+2);
+        assert_eq!(renderer.shared.state.lock().unwrap().revision, revision + 2);
     }
 }

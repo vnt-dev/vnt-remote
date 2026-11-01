@@ -188,7 +188,11 @@ pub struct ClientHandle {
     control_available: Arc<AtomicBool>,
     sas_allowed: bool,
     paste_allowed: bool,
-    paste_pending: Arc<std::sync::Mutex<std::collections::HashMap<u32,tokio::sync::oneshot::Sender<pb::ClipboardPasteResult>>>>,
+    paste_pending: Arc<
+        std::sync::Mutex<
+            std::collections::HashMap<u32, tokio::sync::oneshot::Sender<pb::ClipboardPasteResult>>,
+        >,
+    >,
     /// 剪贴板会话守卫：drop 即注销（取消进行中的收发传输）。
     clipboard: Option<Box<dyn crate::clipboard::ClipboardRegistration>>,
 }
@@ -203,26 +207,51 @@ impl ClientHandle {
     }
 
     /// One-shot, bounded request. Completion is emitted as client://paste; it is never retried.
-    pub fn paste_text(&self,text:String)->Result<u32,String> {
-        if self.is_closed() || !self.paste_allowed || !self.control_available()
-            || !self.screen_input_enabled.load(Ordering::Acquire) {return Err("当前会话不能粘贴".into());}
-        if !vnt_proto::validation::valid_clipboard_text(&text) {return Err("文本超过协议上限".into());}
-        static NEXT:AtomicU32=AtomicU32::new(1);
-        let request_id=NEXT.try_update(Ordering::Relaxed,Ordering::Relaxed,|id|id.checked_add(1)).map_err(|_|"粘贴请求编号耗尽")?;
-        let message=screens::input(&self.screens,ControlMessage::ClipboardPaste(pb::ClipboardPaste{request_id,text}),None).ok_or("当前屏幕不可用")?;
-        let (tx,rx)=tokio::sync::oneshot::channel();
-        { let mut pending=self.paste_pending.lock().unwrap();
-          if pending.len()>=8 {return Err("粘贴请求过多，请稍后再试".into());} pending.insert(request_id,tx); }
-        if self.control_tx.try_send(message).is_err() {self.paste_pending.lock().unwrap().remove(&request_id);return Err("粘贴通道拥塞".into());}
-        let pending=self.paste_pending.clone();let end=self.end.clone();
+    pub fn paste_text(&self, text: String) -> Result<u32, String> {
+        if self.is_closed()
+            || !self.paste_allowed
+            || !self.control_available()
+            || !self.screen_input_enabled.load(Ordering::Acquire)
+        {
+            return Err("当前会话不能粘贴".into());
+        }
+        if !vnt_proto::validation::valid_clipboard_text(&text) {
+            return Err("文本超过协议上限".into());
+        }
+        static NEXT: AtomicU32 = AtomicU32::new(1);
+        let request_id = NEXT
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .map_err(|_| "粘贴请求编号耗尽")?;
+        let message = screens::input(
+            &self.screens,
+            ControlMessage::ClipboardPaste(pb::ClipboardPaste { request_id, text }),
+            None,
+        )
+        .ok_or("当前屏幕不可用")?;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        {
+            let mut pending = self.paste_pending.lock().unwrap();
+            if pending.len() >= 8 {
+                return Err("粘贴请求过多，请稍后再试".into());
+            }
+            pending.insert(request_id, tx);
+        }
+        if self.control_tx.try_send(message).is_err() {
+            self.paste_pending.lock().unwrap().remove(&request_id);
+            return Err("粘贴通道拥塞".into());
+        }
+        let pending = self.paste_pending.clone();
+        let end = self.end.clone();
         tokio::spawn(async move {
-            let result=tokio::select!{biased; _=end.cancel.cancelled()=>None,
-                result=tokio::time::timeout(Duration::from_secs(5),rx)=>Some(match result {
-                    Ok(Ok(result))=>result,
-                    _=>pb::ClipboardPasteResult{request_id,success:false,reason:"远端粘贴未确认，请检查远端；请求不会自动重试".into()},
-                })};
+            let result = tokio::select! {biased; _=end.cancel.cancelled()=>None,
+            result=tokio::time::timeout(Duration::from_secs(5),rx)=>Some(match result {
+                Ok(Ok(result))=>result,
+                _=>pb::ClipboardPasteResult{request_id,success:false,reason:"远端粘贴未确认，请检查远端；请求不会自动重试".into()},
+            })};
             pending.lock().unwrap().remove(&request_id);
-            if let Some(result)=result {end.sink.emit_json("client://paste",serde_json::json!({"requestId":request_id,"success":result.success,"reason":result.reason,"sessionId":end.session_id}).to_string());}
+            if let Some(result) = result {
+                end.sink.emit_json("client://paste",serde_json::json!({"requestId":request_id,"success":result.success,"reason":result.reason,"sessionId":end.session_id}).to_string());
+            }
         });
         Ok(request_id)
     }
@@ -571,7 +600,10 @@ pub async fn connect_with(
         screens: welcome.screens.clone(),
     }));
     let screen_input_enabled = Arc::new(AtomicBool::new(true));
-    let paste_pending=Arc::new(std::sync::Mutex::new(std::collections::HashMap::<u32,tokio::sync::oneshot::Sender<pb::ClipboardPasteResult>>::new()));
+    let paste_pending = Arc::new(std::sync::Mutex::new(std::collections::HashMap::<
+        u32,
+        tokio::sync::oneshot::Sender<pb::ClipboardPasteResult>,
+    >::new()));
     let bind_token = welcome.bind_token;
     tracing::info!(
         "接入成功: transport={transport:?} codec={codec:?} hw={} {}x{}@{} encoder={} view_only={}",
@@ -1025,7 +1057,7 @@ pub async fn connect_with(
         let visibility = visibility.clone();
         let control_available = control_available.clone();
         let media_generation = media_generation.clone();
-        let paste_pending=paste_pending.clone();
+        let paste_pending = paste_pending.clone();
         tasks.push(tokio::spawn(async move {
             let mut reader = reader;
             let mut rtt_ms = 0;
@@ -1210,7 +1242,9 @@ pub async fn connect_with(
             control_available,
             sas_allowed: welcome.host_edition == pb::HostEdition::Installed as i32
                 && !welcome.view_only,
-            paste_allowed: info.clipboard_enabled && !info.view_only && info.capabilities & vnt_proto::CAP_TEXT !=0,
+            paste_allowed: info.clipboard_enabled
+                && !info.view_only
+                && info.capabilities & vnt_proto::CAP_TEXT != 0,
             paste_pending,
             clipboard: Some(clipboard_registration),
         },

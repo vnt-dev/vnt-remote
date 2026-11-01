@@ -1463,7 +1463,9 @@ async fn handle_channel<
         enabled: clipboard_enabled && !view_only,
     });
     let clipboard_key = clipboard_guard.key();
-    if !view_only {clipboard.allow_remote_paste(clipboard_key);}
+    if !view_only {
+        clipboard.allow_remote_paste(clipboard_key);
+    }
     if let Some(portable) = &portable {
         clipboard.control_changed(clipboard_key, portable.available());
     }

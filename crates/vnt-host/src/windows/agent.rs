@@ -414,7 +414,9 @@ pub(super) async fn user_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
         sink: Arc::new(crate::NoopEventSink),
         enabled: clipboard.is_enabled() && !h.audio_enabled,
     });
-    if boot.config.allow_control {clipboard.allow_remote_paste(registration.key());}
+    if boot.config.allow_control {
+        clipboard.allow_remote_paste(registration.key());
+    }
     // The broker must not publish this channel until its clipboard receiver is
     // registered. The media handshake alone does not make the user agent ready.
     writer

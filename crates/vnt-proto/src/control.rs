@@ -238,7 +238,9 @@ impl ControlMessage {
             ControlMessage::ClipboardReply(m) => (MessageType::ClipboardReply, m.encode_to_vec()),
             ControlMessage::ClipboardText(m) => (MessageType::ClipboardText, m.encode_to_vec()),
             ControlMessage::ClipboardPaste(m) => (MessageType::ClipboardPaste, m.encode_to_vec()),
-            ControlMessage::ClipboardPasteResult(m) => (MessageType::ClipboardPasteResult, m.encode_to_vec()),
+            ControlMessage::ClipboardPasteResult(m) => {
+                (MessageType::ClipboardPasteResult, m.encode_to_vec())
+            }
         };
         let mut out = Vec::with_capacity(HEADER_LEN + body.len());
         out.push(ty as u8);
@@ -533,15 +535,15 @@ pub fn decode_message(ty: MessageType, body: &[u8]) -> Result<ControlMessage, De
             ControlMessage::ClipboardReply(value)
         }
         MessageType::ClipboardPaste => {
-            let m=pb::ClipboardPaste::decode(body)?;
-            if m.request_id==0 || !crate::validation::valid_clipboard_text(&m.text) {
+            let m = pb::ClipboardPaste::decode(body)?;
+            if m.request_id == 0 || !crate::validation::valid_clipboard_text(&m.text) {
                 return Err(DecodeError::Mismatch);
             }
             ControlMessage::ClipboardPaste(m)
         }
         MessageType::ClipboardPasteResult => {
-            let m=pb::ClipboardPasteResult::decode(body)?;
-            if m.request_id==0 || m.reason.len()>1024 {
+            let m = pb::ClipboardPasteResult::decode(body)?;
+            if m.request_id == 0 || m.reason.len() > 1024 {
                 return Err(DecodeError::Mismatch);
             }
             ControlMessage::ClipboardPasteResult(m)

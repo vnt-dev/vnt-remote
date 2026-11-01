@@ -65,18 +65,24 @@ impl NativeClipboard {
         vnt_macos::clipboard_image(&image.png, sequence, || valid())
     }
 
-    pub fn paste_text(&self,text:String,valid:ImageValidity)->Result<(),String> {
-        if !valid() {return Err("粘贴请求已取消或过期".into());}
-        self.text(text,crate::win::sequence_number())?;
-        if !valid() {return Err("粘贴请求已取消或过期".into());}
-        vnt_input::paste_shortcut().map_err(|e|e.to_string())
+    pub fn paste_text(&self, text: String, valid: ImageValidity) -> Result<(), String> {
+        if !valid() {
+            return Err("粘贴请求已取消或过期".into());
+        }
+        self.text(text, crate::win::sequence_number())?;
+        if !valid() {
+            return Err("粘贴请求已取消或过期".into());
+        }
+        vnt_input::paste_shortcut().map_err(|e| e.to_string())
     }
     pub fn text(&self, text: String, sequence: u32) -> Result<(), String> {
         if text.len() > vnt_proto::control::MAX_CLIPBOARD_TEXT {
             return Err("文本超过上限".into());
         }
-        let result=vnt_macos::json(6, &serde_json::json!({"sequence":sequence,"text":text}))?;
-        if result != true {return Err("本机剪贴板已更新或文本写入失败".into());}
+        let result = vnt_macos::json(6, &serde_json::json!({"sequence":sequence,"text":text}))?;
+        if result != true {
+            return Err("本机剪贴板已更新或文本写入失败".into());
+        }
         Ok(())
     }
 }

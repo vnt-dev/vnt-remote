@@ -52,7 +52,7 @@ impl Audio {
             return 0;
         }
         let n = s.pcm.len().min(out.len() / 8).min(480);
-        for target in out[..n * 8].chunks_exact_mut(8) {
+        for target in out[..n * 8].as_chunks_mut::<8>().0 {
             let f = s.pcm.pop_front().unwrap();
             target[..4].copy_from_slice(&f[0].to_ne_bytes());
             target[4..].copy_from_slice(&f[1].to_ne_bytes());

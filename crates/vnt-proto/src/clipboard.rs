@@ -128,25 +128,58 @@ mod tests {
 #[cfg(test)]
 mod paste_tests {
     use super::*;
-    use crate::{control::*,session,Transport};
+    use crate::{control::*, session, Transport};
     #[test]
     fn paste_is_bounded_and_uses_reliable_control_on_all_transports() {
         for message in [
-            ControlMessage::ClipboardPaste(pb::ClipboardPaste{request_id:7,text:"中文🙂\ntext".into()}),
-            ControlMessage::ClipboardPasteResult(pb::ClipboardPasteResult{request_id:7,success:false,reason:"denied".into()}),
+            ControlMessage::ClipboardPaste(pb::ClipboardPaste {
+                request_id: 7,
+                text: "中文🙂\ntext".into(),
+            }),
+            ControlMessage::ClipboardPasteResult(pb::ClipboardPasteResult {
+                request_id: 7,
+                success: false,
+                reason: "denied".into(),
+            }),
         ] {
-            let frame=message.encode_frame();
-            let (kind,_)=parse_header(frame[..5].try_into().unwrap()).unwrap();
-            assert_eq!(decode_message(kind,&frame[5..]).unwrap(),message);
-            for transport in [Transport::Tcp,Transport::Hybrid,Transport::Quic,Transport::Vnt] {
-                assert!(session::allowed_on(&message,pb::ChannelKind::ChannelControl,transport));
-                assert!(!session::allowed_on(&message,pb::ChannelKind::ChannelFiles,transport));
-                assert!(!session::allowed_on(&message,pb::ChannelKind::ChannelMedia,transport));
+            let frame = message.encode_frame();
+            let (kind, _) = parse_header(frame[..5].try_into().unwrap()).unwrap();
+            assert_eq!(decode_message(kind, &frame[5..]).unwrap(), message);
+            for transport in [
+                Transport::Tcp,
+                Transport::Hybrid,
+                Transport::Quic,
+                Transport::Vnt,
+            ] {
+                assert!(session::allowed_on(
+                    &message,
+                    pb::ChannelKind::ChannelControl,
+                    transport
+                ));
+                assert!(!session::allowed_on(
+                    &message,
+                    pb::ChannelKind::ChannelFiles,
+                    transport
+                ));
+                assert!(!session::allowed_on(
+                    &message,
+                    pb::ChannelKind::ChannelMedia,
+                    transport
+                ));
             }
         }
-        for request in [pb::ClipboardPaste{request_id:0,text:"x".into()},pb::ClipboardPaste{request_id:1,text:"x".repeat(MAX_CLIPBOARD_TEXT+1)}] {
-            let frame=ControlMessage::ClipboardPaste(request).encode_frame();
-            assert!(decode_message(MessageType::ClipboardPaste,&frame[5..]).is_err());
+        for request in [
+            pb::ClipboardPaste {
+                request_id: 0,
+                text: "x".into(),
+            },
+            pb::ClipboardPaste {
+                request_id: 1,
+                text: "x".repeat(MAX_CLIPBOARD_TEXT + 1),
+            },
+        ] {
+            let frame = ControlMessage::ClipboardPaste(request).encode_frame();
+            assert!(decode_message(MessageType::ClipboardPaste, &frame[5..]).is_err());
         }
     }
 }

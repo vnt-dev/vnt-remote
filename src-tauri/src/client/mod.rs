@@ -565,7 +565,10 @@ mod tests {
         };
         let codecs = vec!["h264".into()];
         for system in [0, -1, 999] {
-            let invalid = pb::Welcome { system, ..valid.clone() };
+            let invalid = pb::Welcome {
+                system,
+                ..valid.clone()
+            };
             assert!(validate_welcome(&invalid, &codecs, vnt_proto::Transport::Hybrid).is_err());
         }
         assert!(validate_welcome(&valid, &codecs, vnt_proto::Transport::Hybrid).is_ok());

@@ -1535,6 +1535,7 @@ impl Supervisor {
 #[path = "session_tests.rs"]
 mod tests;
 
-fn is_paste(message:&Msg)->bool {
-    matches!(message,Msg::ClipboardPaste(_)) || matches!(message,Msg::ScreenPacket(p) if vnt_proto::screen::kind(p)==Some(vnt_proto::control::MessageType::ClipboardPaste))
+fn is_paste(message: &Msg) -> bool {
+    matches!(message, Msg::ClipboardPaste(_))
+        || matches!(message,Msg::ScreenPacket(p) if vnt_proto::screen::kind(p)==Some(vnt_proto::control::MessageType::ClipboardPaste))
 }

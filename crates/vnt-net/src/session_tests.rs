@@ -974,11 +974,18 @@ async fn snapshot_changes_during_recovery_require_a_new_acknowledgement() {
 
 #[tokio::test]
 async fn paste_commands_are_not_queued_for_recovery() {
-    let now=Instant::now();
-    let (events,_events_rx)=mpsc::channel(4);
-    let (app_tx,_app_rx)=mpsc::channel(4);
-    let (writer,_receiver)=mpsc::channel(1);
-    let frame=|pts_ms| Msg::VideoFrame(pb::VideoFrame{dependencies:None,keyframe:true,pts_ms,data:vec![1]});
+    let now = Instant::now();
+    let (events, _events_rx) = mpsc::channel(4);
+    let (app_tx, _app_rx) = mpsc::channel(4);
+    let (writer, _receiver) = mpsc::channel(1);
+    let frame = |pts_ms| {
+        Msg::VideoFrame(pb::VideoFrame {
+            dependencies: None,
+            keyframe: true,
+            pts_ms,
+            data: vec![1],
+        })
+    };
     let mut supervisor = Supervisor {
         server: None,
         address: None,
@@ -1021,10 +1028,16 @@ async fn paste_commands_are_not_queued_for_recovery() {
         last_heartbeat: now,
         last_app_status: now,
     };
-    supervisor.lost[CONTROL]=Some(now);
-    let paste=Msg::ClipboardPaste(pb::ClipboardPaste{request_id:1,text:"never replay".into()});
-    assert!(supervisor.outgoing(paste.clone(),CONTROL).await.unwrap());
-    assert!(supervisor.outgoing(vnt_proto::screen::wrap(1,1,paste),CONTROL).await.unwrap());
+    supervisor.lost[CONTROL] = Some(now);
+    let paste = Msg::ClipboardPaste(pb::ClipboardPaste {
+        request_id: 1,
+        text: "never replay".into(),
+    });
+    assert!(supervisor.outgoing(paste.clone(), CONTROL).await.unwrap());
+    assert!(supervisor
+        .outgoing(vnt_proto::screen::wrap(1, 1, paste), CONTROL)
+        .await
+        .unwrap());
     assert!(supervisor.pending[CONTROL].is_none());
     assert!(supervisor.snapshots.is_empty());
 }
