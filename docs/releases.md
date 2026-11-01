@@ -11,7 +11,7 @@
 - Secret `TAURI_SIGNING_PRIVATE_KEY`：私钥文件的完整内容。
 - Secret `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：密码文件内容。
 - 可选 Variable `RELEASE_REPOSITORY`：发布目标，默认 `vnt-dev/vnt-remote`。工作流会同步生成对应更新地址。
-- 可选 Variable `ANDROID_RELEASE_REPOSITORY`：安卓发布仓库，默认 `vnt-dev/vnt-remote-app`。生成下载表格时查询与桌面端完全相同的版本标签（例如 `v0.1.0`），仅在该 Release 已发布且包含 APK 附件时加入安卓下载链接；找不到对应 Release、仍为草稿或没有 APK 时跳过安卓。查询遇到其他错误时会报错，便于发现权限或网络问题。
+- 可选 Variable `ANDROID_RELEASE_REPOSITORY`：安卓发布仓库，默认 `vnt-dev/vnt-remote-app`。生成下载表格时查询与桌面端完全相同的版本标签（例如 `v0.1.0`），仅在该 Release 已发布且包含 `arm64-v8a` 或 `x86_64` 的 Release APK 附件时加入安卓下载链接（不列出通用 APK）；找不到对应 Release、仍为草稿或没有 APK 时跳过安卓。查询遇到其他错误时会报错，便于发现权限或网络问题。
 - 如果从私有源码仓库向公开仓库发布，还需 Secret `RELEASE_TOKEN`，授予目标仓库 Contents 读写权限。在公开仓库自身发布可使用自带 `GITHUB_TOKEN`。
 - 跨仓库发布时，目标仓库需已有 `main` 分支；其他分支可用 Variable `RELEASE_COMMITISH` 指定。安装包仍从源码仓库指定版本标签构建。
 

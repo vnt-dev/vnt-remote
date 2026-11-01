@@ -15,14 +15,9 @@ export function appendDownloadTable(release, androidRelease) {
   });
   if (androidRelease && !androidRelease.draft && androidRelease.published_at) {
     for (const asset of androidRelease.assets) {
-      if (!/\.apk$/i.test(asset.name)) continue;
-      const arch = /arm64-v8a/i.test(asset.name)
-        ? 'arm64-v8a'
-        : /x86_64/i.test(asset.name)
-          ? 'x86_64'
-          : /universal/i.test(asset.name)
-            ? '通用 (arm64-v8a / x86_64)'
-            : '见 APK 文件名';
+      const match = /^VNTRemote-(arm64-v8a|x86_64)-release\.apk$/i.exec(asset.name);
+      if (!match) continue;
+      const arch = match[1].toLowerCase();
       rows.push(`| Android 7.0+ | ${arch} | APK | [下载](${asset.browser_download_url}) |`);
     }
   }

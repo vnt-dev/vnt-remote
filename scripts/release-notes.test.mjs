@@ -15,7 +15,7 @@ const desktop = {
 const android = {
   draft: false,
   published_at: '2026-11-01T00:00:00Z',
-  assets: ['arm64-v8a', 'x86_64', 'universal'].map((arch) => ({
+  assets: ['arm64-v8a', 'x86_64'].map((arch) => ({
     name: `VNTRemote-${arch}-release.apk`,
     browser_download_url: `https://example.com/${arch}.apk`,
   })),
@@ -25,12 +25,24 @@ describe('release download table', () => {
   it('includes published APKs and ignores other Android assets', () => {
     const body = appendDownloadTable(desktop, {
       ...android,
-      assets: [...android.assets, { name: 'SHA256SUMS' }],
+      assets: [
+        ...android.assets,
+        {
+          name: 'VNTRemote-universal-release.apk',
+          browser_download_url: 'https://example.com/universal.apk',
+        },
+        {
+          name: 'VNTRemote-arm64-v8a-debug.apk',
+          browser_download_url: 'https://example.com/debug.apk',
+        },
+        { name: 'SHA256SUMS' },
+      ],
     });
     expect(body).toContain('| Windows | x64 | 安装版 |');
     expect(body).toContain('| macOS 14+ | Apple Silicon (arm64) |');
     for (const asset of android.assets) expect(body).toContain(asset.browser_download_url);
-    expect(body).toContain('通用 (arm64-v8a / x86_64)');
+    expect(body).not.toContain('universal.apk');
+    expect(body).not.toContain('debug.apk');
     expect(body).not.toContain('SHA256SUMS');
   });
 
