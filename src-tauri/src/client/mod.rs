@@ -296,6 +296,7 @@ mod tests {
                 assert!(vnt_proto::auth::verify("test", &nonce, &proof));
                 channel
                     .send(&ControlMessage::Welcome(pb::Welcome {
+                        system: vnt_proto::system::local() as i32,
                         screens: vec![pb::ScreenInfo {
                             stream_id: 1,
                             generation: 1,
@@ -430,6 +431,7 @@ mod tests {
             assert_eq!(hello.proto_ver, vnt_proto::PROTO_VER);
             channel
                 .send(&ControlMessage::Welcome(pb::Welcome {
+                    system: vnt_proto::system::local() as i32,
                     color_depth: 24,
                     screens: vec![pb::ScreenInfo {
                         stream_id: 1,
@@ -538,6 +540,7 @@ mod tests {
     #[test]
     fn welcome_rejects_invalid_metadata_before_allocating_video_resources() {
         let valid = pb::Welcome {
+            system: vnt_proto::system::local() as i32,
             screens: vec![pb::ScreenInfo {
                 stream_id: 1,
                 generation: 1,
@@ -561,8 +564,13 @@ mod tests {
             ..Default::default()
         };
         let codecs = vec!["h264".into()];
+        for system in [0, -1, 999] {
+            let invalid = pb::Welcome { system, ..valid.clone() };
+            assert!(validate_welcome(&invalid, &codecs, vnt_proto::Transport::Hybrid).is_err());
+        }
         assert!(validate_welcome(&valid, &codecs, vnt_proto::Transport::Hybrid).is_ok());
         let tcp = pb::Welcome {
+            system: vnt_proto::system::local() as i32,
             host_edition: pb::HostEdition::Portable as i32,
             transport: vnt_proto::Transport::Tcp.to_proto() as i32,
             bind_token: vec![],
@@ -574,6 +582,7 @@ mod tests {
         for host_edition in [0, -1, 3] {
             assert!(validate_welcome(
                 &pb::Welcome {
+                    system: vnt_proto::system::local() as i32,
                     host_edition,
                     ..valid.clone()
                 },
@@ -585,6 +594,7 @@ mod tests {
         for wire_mode in [0, -1, 3] {
             assert!(validate_welcome(
                 &pb::Welcome {
+                    system: vnt_proto::system::local() as i32,
                     host_edition: pb::HostEdition::Portable as i32,
                     transport: wire_mode,
                     ..valid.clone()
@@ -596,40 +606,47 @@ mod tests {
         }
         for invalid in [
             pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 screens: vec![],
                 ..valid.clone()
             },
             pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 host_edition: pb::HostEdition::Portable as i32,
                 transport: vnt_proto::Transport::Hybrid.to_proto() as i32,
                 session_id: 0,
                 ..valid.clone()
             },
             pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 host_edition: pb::HostEdition::Portable as i32,
                 transport: vnt_proto::Transport::Hybrid.to_proto() as i32,
                 bind_token: vec![],
                 ..valid.clone()
             },
             pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 host_edition: pb::HostEdition::Portable as i32,
                 transport: vnt_proto::Transport::Hybrid.to_proto() as i32,
                 width: u32::MAX,
                 ..valid.clone()
             },
             pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 host_edition: pb::HostEdition::Portable as i32,
                 transport: vnt_proto::Transport::Hybrid.to_proto() as i32,
                 height: 0,
                 ..valid.clone()
             },
             pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 host_edition: pb::HostEdition::Portable as i32,
                 transport: vnt_proto::Transport::Hybrid.to_proto() as i32,
                 fps: 0,
                 ..valid.clone()
             },
             pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 host_edition: pb::HostEdition::Portable as i32,
                 transport: vnt_proto::Transport::Hybrid.to_proto() as i32,
                 codec: pb::Codec::Hevc.into(),
@@ -698,6 +715,7 @@ mod tests {
             assert_eq!(hello.hardware_codecs, vec![i32::from(pb::Codec::H264)]);
             channel
                 .send(&ControlMessage::Welcome(pb::Welcome {
+                    system: vnt_proto::system::local() as i32,
                     color_depth: 24,
                     capabilities: vnt_proto::platform_capabilities(),
                     fec_version: 0,

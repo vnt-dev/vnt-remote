@@ -26,6 +26,7 @@ mod tests {
             assert!(confirmed(depth, depth));
             assert!(!confirmed(depth, 0));
             let hello = crate::pb::Hello {
+                system: crate::system::local() as i32,
                 desktop_effects: Some(Default::default()),
                 color_depth: depth,
                 ..Default::default()
@@ -37,6 +38,7 @@ mod tests {
                 depth
             );
             let welcome = crate::pb::Welcome {
+                system: crate::system::local() as i32,
                 color_depth: depth,
                 ..Default::default()
             };

@@ -60,6 +60,7 @@ async fn pair(h: &mut Harness, id: u32) -> (SessionChannel, Datagram, Accepted) 
     let (mut client, media) = connect(h.address, password.clone()).await.unwrap();
     client
         .send(&Msg::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             transport: 4,
@@ -81,6 +82,7 @@ async fn pair(h: &mut Harness, id: u32) -> (SessionChannel, Datagram, Accepted) 
         server
             .channel
             .send(&Msg::Welcome(pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 session_id: id,
                 transport: 4,
                 ..Default::default()
@@ -325,6 +327,7 @@ async fn quic_hello_cannot_be_sent_over_tcp_or_change_its_physical_protocol() {
     let (mut client, _media) = connect(h.address, "test".into()).await.unwrap();
     client
         .send(&Msg::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             transport: 1,
@@ -343,6 +346,7 @@ async fn quic_hello_cannot_be_sent_over_tcp_or_change_its_physical_protocol() {
     let mut client = crate::tcp::ControlChannel::new(socket);
     client
         .send(&Msg::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             transport: 4,

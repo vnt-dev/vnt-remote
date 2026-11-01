@@ -30,6 +30,7 @@ async fn capture_device_failure_keeps_the_controller_video_and_control_alive() {
         assert!(hello.audio_enabled);
         channel
             .send(&ControlMessage::Welcome(pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 color_depth: 24,
                 screens: vec![pb::ScreenInfo {
                     stream_id: 1,
@@ -201,6 +202,7 @@ async fn audio_switch_matrix_over_tcp_and_hybrid_in_view_only_mode() {
                 let address = format!("127.0.0.1:{}", server.port).parse().unwrap();
                 let mut tcp = vnt_net::session::connect(address).await.unwrap();
                 tcp.send(&ControlMessage::Hello(pb::Hello {
+                    system: vnt_proto::system::local() as i32,
                     hardware_codecs: Vec::new(),
                     color_depth: 24,
                     desktop_effects: Some(Default::default()),

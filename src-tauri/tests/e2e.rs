@@ -87,6 +87,7 @@ async fn connection_limit_releases_capacity_after_a_peer_disconnects() {
     .unwrap();
     let addr = format!("127.0.0.1:{}", server.port).parse().unwrap();
     let hello = ControlMessage::Hello(pb::Hello {
+        system: vnt_proto::system::local() as i32,
         hardware_codecs: Vec::new(),
         color_depth: 24,
         desktop_effects: Some(Default::default()),
@@ -321,6 +322,7 @@ async fn abrupt_tcp_close_across_codecs_does_not_leave_sessions_behind() {
         let mut channel = ControlChannel::connect(addr).await.unwrap();
         channel
             .send(&ControlMessage::Hello(pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 hardware_codecs: Vec::new(),
                 color_depth: 24,
                 desktop_effects: Some(Default::default()),
@@ -487,6 +489,7 @@ async fn authentication_rejects_wrong_password_and_cross_connection_replay() {
     .unwrap();
     let addr: SocketAddr = format!("127.0.0.1:{}", server.port).parse().unwrap();
     let hello = pb::Hello {
+        system: vnt_proto::system::local() as i32,
         color_depth: 24,
         desktop_effects: Some(Default::default()),
         capabilities: vnt_proto::platform_capabilities(),
@@ -575,6 +578,7 @@ async fn invalid_stream_preferences_are_denied_before_claiming_session() {
         let mut channel = ControlChannel::connect(addr).await.unwrap();
         channel
             .send(&ControlMessage::Hello(pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 hardware_codecs: Vec::new(),
                 color_depth: depth,
                 desktop_effects: Some(Default::default()),
@@ -642,6 +646,7 @@ async fn concurrent_handshakes_get_independent_sessions() {
         handles.push(tokio::spawn(async move {
             let mut ch = ControlChannel::connect(addr).await.ok()?;
             ch.send(&ControlMessage::Hello(pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 hardware_codecs: Vec::new(),
                 color_depth: 24,
                 desktop_effects: Some(Default::default()),
@@ -728,6 +733,7 @@ async fn server_stop_terminates_active_session() {
     let addr: SocketAddr = format!("127.0.0.1:{}", server.port).parse().unwrap();
     let mut ch = ControlChannel::connect(addr).await.expect("TCP 连接");
     ch.send(&ControlMessage::Hello(pb::Hello {
+        system: vnt_proto::system::local() as i32,
         hardware_codecs: Vec::new(),
         color_depth: 24,
         desktop_effects: Some(Default::default()),
@@ -853,6 +859,7 @@ async fn udp_bind_requires_token() {
     let addr: SocketAddr = format!("127.0.0.1:{}", server.port).parse().unwrap();
     let mut ch = ControlChannel::connect(addr).await.unwrap();
     ch.send(&ControlMessage::Hello(pb::Hello {
+        system: vnt_proto::system::local() as i32,
         hardware_codecs: Vec::new(),
         color_depth: 24,
         desktop_effects: Some(Default::default()),
@@ -1344,6 +1351,7 @@ async fn udp_unavailable_rejects_hybrid_but_tcp_streams() {
             .unwrap();
         channel
             .send(&ControlMessage::Hello(pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 hardware_codecs: Vec::new(),
                 color_depth: 24,
                 desktop_effects: Some(Default::default()),
@@ -2039,6 +2047,7 @@ async fn desktop_switch_rejects_late_frames_from_the_previous_desktop() {
             let _ = vnt_net::auth::challenge(&mut channel).await.unwrap();
             channel
                 .send(&ControlMessage::Welcome(pb::Welcome {
+                    system: vnt_proto::system::local() as i32,
                     color_depth: 24,
                     screens: vec![pb::ScreenInfo {
                         stream_id: 1,

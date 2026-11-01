@@ -888,6 +888,16 @@ async fn session(
     else {
         return Ok(());
     };
+    if vnt_proto::system::from_wire(hello.system).is_err() {
+        send(
+            &mut remote,
+            &ControlMessage::Denied(pb::Denied {
+                reason: "主控系统信息缺失或无效，请同步升级双方程序".into(),
+            }),
+        )
+        .await?;
+        return Ok(());
+    }
     if hello.proto_ver != vnt_proto::PROTO_VER || hello.desktop_effects.is_none() {
         send(
             &mut remote,
@@ -1911,6 +1921,7 @@ fn serve_screens(
         };
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         tx.send(ControlMessage::Welcome(pb::Welcome {
+            system: vnt_proto::system::local() as i32,
             bind_token: token,
             ..Default::default()
         }))

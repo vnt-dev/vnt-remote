@@ -173,6 +173,7 @@ async fn encrypted_overlay_has_independent_control_files_media_and_closes_with_c
     let mut client = prepared.channel;
     client
         .send(&Msg::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             proto_ver: vnt_proto::PROTO_VER,
@@ -194,6 +195,7 @@ async fn encrypted_overlay_has_independent_control_files_media_and_closes_with_c
     let (nonce, proof) = challenge.unwrap();
     assert!(vnt_proto::auth::verify_remote("", &nonce, &proof));
     host.send(&Msg::Welcome(pb::Welcome {
+        system: vnt_proto::system::local() as i32,
         session_id: 19,
         transport: 3,
         ..Default::default()
@@ -265,6 +267,7 @@ async fn encrypted_overlay_has_independent_control_files_media_and_closes_with_c
     reverse
         .channel
         .send(&Msg::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             proto_ver: vnt_proto::PROTO_VER,

@@ -723,6 +723,7 @@ mod tests {
             ControlMessage::AuthResponse(pb::AuthResponse { proof: vec![1; 32] }),
             ControlMessage::AuthChallenge(pb::AuthChallenge { nonce: vec![1; 32] }),
             ControlMessage::Hello(pb::Hello {
+                system: crate::system::local() as i32,
                 hardware_codecs: Vec::new(),
                 color_depth: 24,
                 desktop_effects: None,
@@ -746,6 +747,7 @@ mod tests {
                 }),
             }),
             ControlMessage::Welcome(pb::Welcome {
+                system: crate::system::local() as i32,
                 color_depth: 24,
                 capabilities: crate::platform_capabilities(),
                 fec_version: 0,
@@ -902,6 +904,7 @@ mod desktop_effects_tests {
     fn desktop_effects_roundtrip() {
         for wallpaper in [false, true] {
             let hello = pb::Hello {
+                system: crate::system::local() as i32,
                 color_depth: 24,
                 proto_ver: crate::PROTO_VER,
                 desktop_effects: Some(pb::DesktopEffects {

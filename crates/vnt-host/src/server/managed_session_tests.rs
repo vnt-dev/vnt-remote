@@ -27,6 +27,7 @@ async fn quic_single_screen_video_audio_and_fec_use_datagrams() {
             .unwrap();
         client
             .send(&ControlMessage::Hello(pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 color_depth: 24,
                 desktop_effects: Some(Default::default()),
                 proto_ver: vnt_proto::PROTO_VER,
@@ -136,6 +137,7 @@ async fn managed_udp_retransmits_a_whole_lost_frame_through_authenticated_contro
     let address = SocketAddr::from(([127, 0, 0, 1], host.port));
     let mut old = vnt_net::session::connect(address).await.unwrap();
     old.send(&ControlMessage::Hello(pb::Hello {
+        system: vnt_proto::system::local() as i32,
         color_depth: 24,
         desktop_effects: Some(Default::default()),
         capabilities: vnt_proto::platform_capabilities(),
@@ -151,6 +153,7 @@ async fn managed_udp_retransmits_a_whole_lost_frame_through_authenticated_contro
     let mut client = vnt_net::session::connect(address).await.unwrap();
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -269,6 +272,7 @@ async fn keyframe_refresh_preserves_single_screen_throughput() {
         .unwrap();
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -359,6 +363,7 @@ async fn even_region_dimensions_stream_over_hybrid_transport_without_block_align
     let mut client = vnt_net::session::connect(address).await.unwrap();
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -590,6 +595,7 @@ async fn hybrid_defers_capture_subscription_until_udp_is_bound() {
     let mut client = vnt_net::session::connect(address).await.unwrap();
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -658,6 +664,7 @@ async fn portable_connect(port: u16, password: &str) -> vnt_net::session::Sessio
         .unwrap();
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -998,6 +1005,7 @@ async fn managed_remote_tcp_streams_synthetic_video_and_audio_after_configuratio
     let mut client = vnt_net::session::connect(address).await.unwrap();
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -1088,6 +1096,7 @@ async fn stalled_video_consumer_keeps_the_control_writer_responsive() {
         .unwrap();
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -1174,6 +1183,7 @@ async fn each_session_scales_its_own_video_without_changing_shared_capture() {
         let mut client = vnt_net::session::connect(address).await.unwrap();
         client
             .send(&ControlMessage::Hello(pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 desktop_effects: Some(Default::default()),
                 color_depth: depth,
                 capabilities: vnt_proto::platform_capabilities(),
@@ -1260,8 +1270,9 @@ async fn handshake_rejects_unsupported_version_and_incomplete_parameters() {
     )
     .await
     .unwrap();
-    for case in 0..4 {
+    for case in 0..6 {
         let mut hello = pb::Hello {
+            system: vnt_proto::system::local() as i32,
             proto_ver: vnt_proto::PROTO_VER,
             desktop_effects: Some(Default::default()),
             color_depth: 24,
@@ -1275,13 +1286,15 @@ async fn handshake_rejects_unsupported_version_and_incomplete_parameters() {
             0 => hello.proto_ver = vnt_proto::PROTO_VER + 1,
             1 => hello.desktop_effects = None,
             2 => hello.color_depth = 0,
-            _ => hello.fec_version = 2,
+            3 => hello.fec_version = 2,
+            4 => hello.system = 0,
+            _ => hello.system = 999,
         }
         let mut client = vnt_net::session::connect(([127, 0, 0, 1], host.port).into())
             .await
             .unwrap();
         client.send(&ControlMessage::Hello(hello)).await.unwrap();
-        if case >= 2 {
+        if (2..4).contains(&case) {
             vnt_net::auth::respond(&mut client, "handshake")
                 .await
                 .unwrap();

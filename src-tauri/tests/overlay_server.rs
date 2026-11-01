@@ -304,6 +304,7 @@ async fn vnts_multiple_profiles_keep_control_and_media_on_the_selected_source() 
         prepared
             .channel
             .send(&Msg::Hello(pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 color_depth: 24,
                 desktop_effects: Some(Default::default()),
                 proto_ver: vnt_proto::PROTO_VER,
@@ -330,6 +331,7 @@ async fn vnts_multiple_profiles_keep_control_and_media_on_the_selected_source() 
         assert!(vnt_proto::auth::verify_remote("", &nonce, &proof));
         host_channel
             .send(&Msg::Welcome(pb::Welcome {
+                system: vnt_proto::system::local() as i32,
                 session_id: index as u32 + 1,
                 transport: 3,
                 ..Default::default()

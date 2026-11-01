@@ -120,6 +120,8 @@ impl ConnectParams {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientSessionInfo {
+    pub local_system: &'static str,
+    pub remote_system: &'static str,
     pub capabilities: u32,
     pub fec_enabled: bool,
     pub fec_reason: String,
@@ -475,6 +477,7 @@ pub async fn connect_with(
         .collect();
     channel
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: params.color_depth,
             desktop_effects: Some(pb::DesktopEffects {
                 show_wallpaper: params.show_wallpaper,
@@ -613,6 +616,8 @@ pub async fn connect_with(
     // 流信息缓存：初始值 + StreamReset 更新；桥在每个新 WS 连接时重发，
     // 避免前端连接前到达的分辨率更新被广播通道丢弃
     let info = ClientSessionInfo {
+        local_system: vnt_proto::system::name(vnt_proto::system::local()),
+        remote_system: vnt_proto::system::name(vnt_proto::system::from_wire(welcome.system)?),
         capabilities: welcome.capabilities & clipboard.capabilities(),
         fec_enabled: transport != vnt_proto::Transport::Tcp
             && welcome.fec_version == vnt_net::fec::VERSION,
@@ -1267,6 +1272,7 @@ pub fn validate_welcome(
     codecs: &[String],
     transport: vnt_proto::Transport,
 ) -> Result<(), String> {
+    vnt_proto::system::from_wire(welcome.system)?;
     let mut ids = std::collections::HashSet::new();
     if welcome.screens.is_empty()
         || welcome.screens.len() > 128

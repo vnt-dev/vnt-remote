@@ -126,7 +126,11 @@ export interface ServerSessionInfo {
   viewOnly: boolean;
 }
 
+export type OperatingSystem = 'windows' | 'macos' | 'linux' | 'android' | 'ios' | 'other';
+
 export interface ClientSessionInfo {
+  localSystem: OperatingSystem;
+  remoteSystem: OperatingSystem;
   capabilities?: number;
   fecEnabled?: boolean;
   fecReason?: string;

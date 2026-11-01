@@ -76,6 +76,7 @@ async fn shared_agent_streams_two_pipe_sessions_and_cancels_only_the_departing_s
         let mut client = ControlChannel::new(b);
         client
             .send(&ControlMessage::Hello(pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 desktop_effects: Some(Default::default()),
                 color_depth: depth,
                 capabilities: vnt_proto::platform_capabilities(),
@@ -196,6 +197,7 @@ async fn user_agent_pipe_syncs_text_and_lazy_files_in_both_directions() {
     let mut channel = ControlChannel::new(pipe);
     channel
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -328,6 +330,7 @@ async fn persistent_media_pipe_recovers_epochs_without_rehandshake() {
     let task = tokio::spawn(async move { host.serve(a).await });
     let mut pipe = ControlChannel::new(b);
     pipe.send(&ControlMessage::Hello(pb::Hello {
+        system: vnt_proto::system::local() as i32,
         desktop_effects: Some(Default::default()),
         color_depth: 16,
         capabilities: vnt_proto::platform_capabilities(),
@@ -425,6 +428,7 @@ async fn media_agent_pipe_applies_background_budget_and_restores_encoding() {
     let serving = tokio::spawn(async move { host.serve(pipe).await });
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),

@@ -144,6 +144,7 @@ async fn connect_media(
     };
     client
         .send(&ControlMessage::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             desktop_effects: Some(Default::default()),
             color_depth: if fec { 15 } else { 16 },
             capabilities: vnt_proto::platform_capabilities(),

@@ -68,7 +68,19 @@ enum ResolutionMode {
   RESOLUTION_CHANGE = 2;
 }
 
+// Operating system of the sending endpoint; required in both handshake directions.
+enum OperatingSystem {
+  OPERATING_SYSTEM_UNSPECIFIED = 0;
+  OPERATING_SYSTEM_WINDOWS = 1;
+  OPERATING_SYSTEM_MACOS = 2;
+  OPERATING_SYSTEM_LINUX = 3;
+  OPERATING_SYSTEM_ANDROID = 4;
+  OPERATING_SYSTEM_IOS = 5;
+  OPERATING_SYSTEM_OTHER = 6;
+}
+
 message Hello {
+  OperatingSystem system = 16;
   repeated Codec hardware_codecs = 15; // 可硬件解码且已启用硬件解码的编码列表；无硬件能力时为空
   uint32 color_depth = 14; // Required: 15, 16, 24, 32; zero is invalid
   DesktopEffects desktop_effects = 13; // Required session settings
@@ -109,6 +121,7 @@ enum HostEdition {
 
 // S→C 握手成功
 message Welcome {
+  OperatingSystem system = 22;
   uint32 color_depth = 21; // Confirmed session color depth; must match the requested depth
   uint32 capabilities = 20; // negotiated intersection of endpoint capabilities
   uint32 fec_version = 19; // negotiated, zero when disabled or using TCP

@@ -850,6 +850,7 @@ mod tests {
         let task = tokio::spawn(serve(
             host,
             pb::Hello {
+                system: vnt_proto::system::local() as i32,
                 desktop_effects: Some(Default::default()),
                 color_depth: 16,
                 transport: 2,

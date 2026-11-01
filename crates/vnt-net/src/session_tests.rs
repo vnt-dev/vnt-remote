@@ -292,6 +292,7 @@ async fn queued_rejection_reaches_peer_when_application_drops_immediately() {
     let mut client = connect(address).await.unwrap();
     client
         .send(&Msg::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -378,6 +379,7 @@ async fn pair(h: &mut Harness, tcp: bool) -> (SessionChannel, SessionChannel) {
     let mut client = connect(h.address).await.unwrap();
     client
         .send(&Msg::Hello(pb::Hello {
+            system: vnt_proto::system::local() as i32,
             color_depth: 24,
             desktop_effects: Some(Default::default()),
             capabilities: vnt_proto::platform_capabilities(),
@@ -399,6 +401,7 @@ async fn pair(h: &mut Harness, tcp: bool) -> (SessionChannel, SessionChannel) {
     let mut server = challenge.await.unwrap();
     server
         .send(&Msg::Welcome(pb::Welcome {
+            system: vnt_proto::system::local() as i32,
             host_edition: pb::HostEdition::Portable as i32,
             proto_ver: 1,
             session_id: 123,

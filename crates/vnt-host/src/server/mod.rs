@@ -723,6 +723,7 @@ fn serve_screens<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send 
             reason: "多屏会话结束".into(),
         };
         tx.send(ControlMessage::Welcome(pb::Welcome {
+            system: vnt_proto::system::local() as i32,
             bind_token: token,
             ..Default::default()
         }))
@@ -861,6 +862,14 @@ async fn handle_channel<
         Ok(_) => return Ok(()),
         Err(_) => return Ok(()),
     };
+    if vnt_proto::system::from_wire(hello.system).is_err() {
+        let _ = channel
+            .send(&ControlMessage::Denied(pb::Denied {
+                reason: "主控系统信息缺失或无效，请同步升级双方程序".into(),
+            }))
+            .await;
+        return Ok(());
+    }
     if hello.proto_ver != vnt_proto::PROTO_VER || hello.desktop_effects.is_none() {
         let _ = channel
             .send(&ControlMessage::Denied(pb::Denied {
@@ -1264,6 +1273,7 @@ async fn handle_channel<
     let audio_enabled = cfg.audio && hello.audio_enabled;
     if channel
         .send(&ControlMessage::Welcome(pb::Welcome {
+            system: vnt_proto::system::local() as i32,
             color_depth,
             capabilities: hello.capabilities & vnt_proto::platform_capabilities(),
             fec_version: if fec.is_some() {
