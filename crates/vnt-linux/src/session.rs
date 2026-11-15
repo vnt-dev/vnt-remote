@@ -102,14 +102,15 @@ fn watch_lock() -> Result<(), zbus::Error> {
 fn query_unlocked() -> Result<bool, zbus::Error> {
     // ScreenSaver is available in GNOME and KDE user sessions, including when
     // the application was launched outside the session's logind cgroup.
-    let connection = session_bus()?;
-    for (name, path) in [
-        ("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver"),
-        ("org.freedesktop.ScreenSaver", "/ScreenSaver"),
-    ] {
-        if let Ok(proxy) = zbus::blocking::Proxy::new(&connection, name, path, name) {
-            if let Ok(active) = proxy.call::<_, _, bool>("GetActive", &()) {
-                return Ok(!active);
+    if let Ok(connection) = session_bus() {
+        for (name, path) in [
+            ("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver"),
+            ("org.freedesktop.ScreenSaver", "/ScreenSaver"),
+        ] {
+            if let Ok(proxy) = zbus::blocking::Proxy::new(&connection, name, path, name) {
+                if let Ok(active) = proxy.call::<_, _, bool>("GetActive", &()) {
+                    return Ok(!active);
+                }
             }
         }
     }
@@ -122,22 +123,64 @@ fn query_unlocked() -> Result<bool, zbus::Error> {
         "/org/freedesktop/login1",
         "org.freedesktop.login1.Manager",
     )?;
-    let path: zbus::zvariant::OwnedObjectPath =
-        manager.call("GetSessionByPID", &(std::process::id(),))?;
-    let session = zbus::blocking::Proxy::new(
-        &connection,
-        "org.freedesktop.login1",
-        path,
-        "org.freedesktop.login1.Session",
-    )?;
-    let active: bool = session.get_property("Active")?;
-    let locked: bool = session.get_property("LockedHint")?;
-    Ok(active && !locked)
+    // IDEs, terminals and AppImage launchers may live outside the desktop's
+    // logind cgroup. Resolve the actual display, never an arbitrary active user
+    // session (which could belong to another seat or an SSH login).
+    let uid = unsafe { libc::getuid() };
+    let display = std::env::var("DISPLAY").unwrap_or_default();
+    let sessions: Vec<(String, u32, String, String, zbus::zvariant::OwnedObjectPath)> =
+        manager.call("ListSessions", &())?;
+    for (_, owner, _, _, path) in sessions {
+        if owner != uid {
+            continue;
+        }
+        let session = zbus::blocking::Proxy::new(
+            &connection,
+            "org.freedesktop.login1",
+            path,
+            "org.freedesktop.login1.Session",
+        )?;
+        let kind: String = session.get_property("Type")?;
+        let session_display: String = session.get_property("Display")?;
+        if !matches_session(uid, owner, &display, &session_display, &kind) {
+            continue;
+        }
+        let active: bool = session.get_property("Active")?;
+        let locked: bool = session.get_property("LockedHint")?;
+        return Ok(active && !locked);
+    }
+    Ok(false)
+}
+
+fn matches_session(uid: u32, owner: u32, display: &str, session_display: &str, kind: &str) -> bool {
+    fn server(display: &str) -> Option<&str> {
+        let local = display.strip_prefix(':')?;
+        let number = local.split('.').next()?;
+        (!number.is_empty() && number.bytes().all(|b| b.is_ascii_digit())).then_some(number)
+    }
+    uid == owner
+        && kind == "x11"
+        && server(display).is_some()
+        && server(display) == server(session_display)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn logind_session_matches_only_the_current_users_x11_display() {
+        assert!(matches_session(1000, 1000, ":0.0", ":0", "x11"));
+        assert!(!matches_session(1000, 1001, ":0", ":0", "x11"));
+        assert!(!matches_session(1000, 1000, ":1", ":0", "x11"));
+        assert!(!matches_session(1000, 1000, ":0", ":0", "wayland"));
+        assert!(!matches_session(1000, 1000, "", "", "tty"));
+        assert!(!matches_session(1000, 1000, "host:0", ":0", "x11"));
+    }
+    #[test]
+    #[ignore = "requires a real unlocked X11 logind session matching DISPLAY"]
+    fn native_logind_resolves_a_process_outside_the_desktop_cgroup() {
+        assert!(query_unlocked().unwrap());
+    }
     #[test]
     fn rejects_xwayland_and_missing_displays() {
         assert!(validate_environment(Some("wayland"), None, Some(":0")).is_err());

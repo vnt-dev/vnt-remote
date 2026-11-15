@@ -996,7 +996,12 @@ async fn handle_channel<
     if portable.as_ref().is_some_and(|p| !p.normal_desktop()) {
         let _ = channel
             .send(&ControlMessage::Denied(pb::Denied {
-                reason: "免安装版仅支持当前用户的普通桌面，请解锁后重试".into(),
+                reason: if cfg!(target_os = "linux") {
+                    "Linux 桌面已锁定，或无法确认当前 X11 会话状态；请解锁并检查桌面会话与 logind"
+                } else {
+                    "免安装版仅支持当前用户的普通桌面，请解锁后重试"
+                }
+                .into(),
             }))
             .await;
         return Ok(());

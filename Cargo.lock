@@ -6173,6 +6173,7 @@ dependencies = [
 name = "vnt-linux"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "log",
  "x11rb",
  "zbus",
