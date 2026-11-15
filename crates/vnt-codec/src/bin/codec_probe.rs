@@ -13,6 +13,20 @@ fn main() {
         println!("  硬件 MFT: {name}");
     }
 
+    #[cfg(target_os = "linux")]
+    for diagnostic in vnt_codec::linux::diagnostics() {
+        println!(
+            "  硬编诊断 {:?} {}: {} {}",
+            diagnostic.codec,
+            diagnostic.backend,
+            if diagnostic.available {
+                "可用"
+            } else {
+                "不可用"
+            },
+            diagnostic.reason
+        );
+    }
     for cap in vnt_codec::probe_caps() {
         println!(
             "  {:?}\t{}\t{}",
@@ -43,13 +57,30 @@ fn main() {
         }
         // 附带 "soft" 参数时测纯软件路径（对应被控端关闭硬件编码）
         let hardware = !std::env::args().any(|a| a == "soft");
-        match vnt_codec::create_encoder(codec, hardware) {
+        let params = vnt_codec::EncodeParams::new(w, h, 30, 8000);
+        let strict = std::env::args().any(|a| a == "--hardware-only");
+        if strict && !hardware {
+            eprintln!("soft 与 --hardware-only 不能同时使用");
+            std::process::exit(1);
+        }
+        #[cfg(target_os = "linux")]
+        let encoder = if strict {
+            vnt_codec::linux::strict_hardware(codec, &params)
+        } else {
+            vnt_codec::create_encoder(codec, hardware)
+        };
+        #[cfg(not(target_os = "linux"))]
+        let encoder = vnt_codec::create_encoder(codec, hardware);
+        match encoder {
             Ok(mut enc) => {
-                println!("使用: {} (硬件={})", enc.name(), enc.is_hardware());
-                let params = vnt_codec::EncodeParams::new(w, h, 30, 8000);
                 if let Err(e) = enc.configure(&params) {
-                    println!("configure 失败: {e}");
-                    return;
+                    eprintln!("configure 失败: {e}");
+                    std::process::exit(1);
+                }
+                println!("使用: {} (硬件={})", enc.name(), enc.is_hardware());
+                if strict && !enc.is_hardware() {
+                    eprintln!("要求硬件编码，禁止软件回退");
+                    std::process::exit(1);
                 }
                 let t0 = std::time::Instant::now();
                 let mut all = Vec::new();
@@ -58,8 +89,8 @@ fn main() {
                     match enc.encode(&frame, i * 33, &mut pkts) {
                         Ok(()) => all.extend(pkts),
                         Err(e) => {
-                            println!("第 {i} 帧失败: {e}");
-                            return;
+                            eprintln!("第 {i} 帧失败: {e}");
+                            std::process::exit(1);
                         }
                     }
                 }
@@ -88,7 +119,10 @@ fn main() {
                     }
                 }
             }
-            Err(e) => println!("创建编码器失败: {e}"),
+            Err(e) => {
+                eprintln!("创建编码器失败: {e}");
+                std::process::exit(1);
+            }
         }
     }
 }

@@ -16,7 +16,7 @@ pub struct FrameTracker {
     av1: av1::Parser,
 }
 
-#[cfg(all(test, windows))]
+#[cfg(all(test, any(windows, target_os = "linux")))]
 mod tests {
     use super::*;
     use crate::{create_encoder, EncodeParams};

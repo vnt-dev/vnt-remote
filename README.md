@@ -119,4 +119,6 @@ Mac 需先点击远程画面，键盘操作才会发送到对方；部分系统�
 
 **更新应用**：Windows 安装版可在设置中检查、下载和安装更新，安装时会关闭远程窗口，并可能需要管理员授权。Windows 免安装版、Mac 和 Linux 请从 [发布页](https://github.com/vnt-dev/vnt-remote/releases) 下载对应版本，彻底退出应用后替换程序。
 
+Linux 支持 VA-API / NVENC 的 H.264、HEVC、AV1 硬件编码，不可用时使用同格式软件编码；显卡驱动、设备权限与自测见 [Linux 编码说明](docs/linux-codecs.md)。
+
 更多平台说明：[Windows 安装版与免安装版](docs/windows-service.md) · [macOS 使用说明](docs/macos.md) · [Linux 使用说明](docs/linux.md)。

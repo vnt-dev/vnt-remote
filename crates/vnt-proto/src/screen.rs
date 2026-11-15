@@ -122,3 +122,43 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod encoder_metadata_tests {
+    use prost::Message;
+    #[derive(Clone, PartialEq, Message)]
+    struct LegacyReset {
+        #[prost(uint32, tag = "1")]
+        width: u32,
+        #[prost(uint32, tag = "2")]
+        height: u32,
+        #[prost(uint32, tag = "3")]
+        fps: u32,
+        #[prost(bytes = "vec", tag = "4")]
+        config: Vec<u8>,
+    }
+    #[test]
+    fn optional_encoder_fields_are_compatible_in_both_directions() {
+        let old = LegacyReset {
+            width: 128,
+            height: 96,
+            fps: 30,
+            config: Vec::new(),
+        };
+        let mut new = crate::pb::StreamReset::decode(old.encode_to_vec().as_slice()).unwrap();
+        assert_eq!(new.hardware, None);
+        assert_eq!(new.encoder_name, None);
+        new.hardware = Some(false);
+        new.encoder_name = Some("kvazaar".into());
+        assert_eq!(
+            LegacyReset::decode(new.encode_to_vec().as_slice()).unwrap(),
+            old
+        );
+        assert_eq!(
+            crate::pb::StreamReset::decode(new.encode_to_vec().as_slice())
+                .unwrap()
+                .hardware,
+            Some(false)
+        );
+    }
+}

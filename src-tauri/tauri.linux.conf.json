@@ -1,6 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "build": { "features": [] },
+  "build": {
+    "features": []
+  },
   "bundle": {
     "active": true,
     "targets": ["deb", "appimage"],
@@ -18,10 +20,19 @@
           "gstreamer1.0-libav",
           "gstreamer1.0-plugins-good",
           "gstreamer1.0-plugins-bad",
-          "xdg-utils"
+          "xdg-utils",
+          "libdrm2"
         ]
       },
-      "appimage": { "bundleMediaFramework": true }
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
+    "resources": {
+      "../target/linux-codec/runtime/": "linux-codec/",
+      "../target/linux-codec/licenses/": "licenses/linux-codec/",
+      "../vendor/svt-av1/LICENSE.md": "licenses/svt-av1-LICENSE.md",
+      "../vendor/svt-av1/LICENSE-BSD2.md": "licenses/svt-av1-LICENSE-BSD2.md"
     }
   }
 }

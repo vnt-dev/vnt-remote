@@ -692,13 +692,19 @@ async fn concurrent_handshakes_get_independent_sessions() {
             .send(&ControlMessage::Ping(pb::Ping { timestamp_ms: 7 }))
             .await
             .unwrap();
-        assert!(matches!(
-            tokio::time::timeout(Duration::from_secs(2), recv_channel(channel))
-                .await
-                .unwrap()
-                .unwrap(),
-            Some(ControlMessage::Pong(_))
-        ));
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match recv_channel(channel).await.unwrap() {
+                    Some(ControlMessage::Pong(_)) => break,
+                    // A configured encoder can publish its initial stream
+                    // parameters immediately after Welcome, before this Ping.
+                    Some(ControlMessage::StreamReset(_) | ControlMessage::VideoFrame(_)) => {}
+                    other => panic!("expected Pong, got {other:?}"),
+                }
+            }
+        })
+        .await
+        .unwrap();
     }
     server.stop().await;
 }
@@ -916,14 +922,16 @@ async fn full_loop_video_over_ws_bridge() {
 }
 
 /// AV1 全链路（svt-av1 软编）：校验 OBU 码流格式随协商结果下发。
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn full_loop_av1_video_over_ws_bridge() {
-    video_over_ws_bridge(true, vec!["av1".into()], vnt_proto::Transport::Hybrid).await;
+    for transport in [vnt_proto::Transport::Tcp, vnt_proto::Transport::Hybrid] {
+        video_over_ws_bridge(true, vec!["av1".into()], transport).await;
+    }
 }
 
 /// Regression: HEVC-only clients must connect with host hardware encoding off.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn full_loop_software_hevc_video_over_ws_bridge() {
     for transport in [vnt_proto::Transport::Tcp, vnt_proto::Transport::Hybrid] {
@@ -1171,6 +1179,16 @@ async fn video_over_ws_bridge_with_color_depth(
                 }
                 if keyframe {
                     saw_keyframe = true;
+                    // Recovery/FEC must understand the exact negotiated stream,
+                    // including inline headers on each independent keyframe.
+                    let codec = match info.codec.as_str() {
+                        "av1" => vnt_proto::Codec::Av1,
+                        "hevc" => vnt_proto::Codec::Hevc,
+                        _ => vnt_proto::Codec::H264,
+                    };
+                    let parsed =
+                        vnt_codec::dependencies::FrameTracker::new(codec).frame(data, true);
+                    assert!(parsed.independent && !parsed.unknown);
                 }
                 assert!(pts < 3_600_000, "pts 异常: {pts}");
                 video_frames += 1;
@@ -2269,5 +2287,21 @@ async fn recv_channel<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
             Some(ControlMessage::ScreensState(_)) => continue,
             message => Ok(message),
         };
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn linux_three_software_codecs_over_quic() {
+    for codec in ["h264", "hevc", "av1"] {
+        video_over_ws_bridge_with_resolution(
+            true,
+            vec![codec.into()],
+            vnt_proto::Transport::Quic,
+            false,
+            "scale",
+            (640, 360),
+        )
+        .await;
     }
 }

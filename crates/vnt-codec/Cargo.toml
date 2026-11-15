@@ -37,3 +37,5 @@ openh264 = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 openh264 = { workspace = true }
+libloading = "0.8"
+libc = "0.2"

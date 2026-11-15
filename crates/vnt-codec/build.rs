@@ -1,13 +1,14 @@
 //! 静态构建 vendor/svt-av1 与 vendor/kvazaar（软件 AV1 / HEVC 兜底）。
 //!
 //! 首次构建用 CMake 静态编译 SvtAv1Enc（仅编码库，无 app/test），
-//! 之后由 cargo 按指纹跳过。非 Windows 平台不参与构建。
+//! 之后由 cargo 按指纹跳过。仅 Windows 和 Linux 参与构建。
 
 use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+    let linux = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux");
+    if !linux && std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -15,6 +16,7 @@ fn main() {
     let dst = cmake::Config::new(&kvazaar)
         .out_dir(PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("kvazaar"))
         .profile("Release")
+        .define("CMAKE_INSTALL_LIBDIR", "lib")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BUILD_TESTS", "OFF")
         .define("BUILD_KVAZAAR_BINARY", "OFF")
@@ -27,7 +29,10 @@ fn main() {
         .include(kvazaar.join("src"))
         .define("KVZ_STATIC_LIB", None)
         .compile("vnt_kvazaar_bridge");
-    println!("cargo:rustc-link-lib=static=libkvazaar");
+    println!(
+        "cargo:rustc-link-lib=static={}",
+        if linux { "kvazaar" } else { "libkvazaar" }
+    );
     println!("cargo:rerun-if-changed={}", kvazaar.join("src").display());
     println!(
         "cargo:rerun-if-changed={}",
@@ -42,16 +47,21 @@ fn main() {
     let Some(svt) = svt else {
         // vendor 源码缺失时仍允许编译（模块在 cfg(windows) 下引用符号会失败，
         // 但 CI 的非编码目标可显式关闭）。实际发布构建必须带上 vendor。
-        if cfg!(windows) {
+        if cfg!(windows) || linux {
             panic!("vendor/svt-av1 缺失：软件 AV1 编码需要该源码（见 README）");
         }
         return;
     };
 
-    let dst = cmake::Config::new(&svt)
+    let mut svt_build = cmake::Config::new(&svt);
+    if linux {
+        svt_build.profile("Release").define("SVT_AV1_LTO", "OFF");
+    }
+    let dst = svt_build
         // Match Rust's dynamic release CRT even in cargo's debug profile.
         .define("CMAKE_POLICY_DEFAULT_CMP0091", "NEW")
         .define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL")
+        .define("CMAKE_INSTALL_LIBDIR", "lib")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BUILD_APPS", "OFF")
         .define("BUILD_TESTING", "OFF")
@@ -64,7 +74,13 @@ fn main() {
     // 多配置生成器（VS）与单配置生成器的产物目录不同，直接搜索定位。
     let lib = walk(&dst).into_iter().find(|p| {
         p.file_name()
-            .map(|n| n.to_string_lossy().eq_ignore_ascii_case("SvtAv1Enc.lib"))
+            .map(|n| {
+                n.to_string_lossy().eq_ignore_ascii_case(if linux {
+                    "libSvtAv1Enc.a"
+                } else {
+                    "SvtAv1Enc.lib"
+                })
+            })
             .unwrap_or(false)
     });
     let Some(lib) = lib else {
@@ -73,6 +89,31 @@ fn main() {
     let dir = lib.parent().unwrap();
     println!("cargo:rustc-link-search=native={}", dir.display());
     println!("cargo:rustc-link-lib=static=SvtAv1Enc");
+    if linux {
+        println!("cargo:rustc-link-lib=pthread");
+        println!("cargo:rustc-link-lib=m");
+        cc::Build::new()
+            .file(manifest.join("src/svt_av1_layout.c"))
+            .include(svt.join("Source/API"))
+            .compile("vnt_svt_layout");
+        println!("cargo:rerun-if-changed=src/svt_av1_layout.c");
+        for file in ["build.py", "encoder.c", "exports.map", "sources.json"] {
+            println!("cargo:rerun-if-changed=linux/{file}");
+        }
+        let status = std::process::Command::new("python3")
+            .arg(manifest.join("linux/build.py"))
+            .status()
+            .expect("python3 is required to build Linux codecs");
+        assert!(
+            status.success(),
+            "Linux hardware codec build failed; see scripts/setup-linux.sh"
+        );
+        let backend = manifest.join("../../target/linux-codec/runtime/libvnt-linux-encoder.so");
+        println!(
+            "cargo:rustc-env=VNT_LINUX_ENCODER_BUILD_PATH={}",
+            backend.display()
+        );
+    }
     println!(
         "cargo:rerun-if-changed={}",
         svt.join("Source").join("Lib").display()
@@ -90,7 +131,7 @@ fn walk(root: &std::path::Path) -> impl Iterator<Item = PathBuf> {
             let p = e.path();
             if p.is_dir() {
                 stack.push(p);
-            } else if p.extension().map(|x| x == "lib").unwrap_or(false) {
+            } else if p.extension().is_some_and(|x| x == "lib" || x == "a") {
                 out.push(p);
             }
         }

@@ -40,9 +40,12 @@ image = Image.frombytes("RGB", (1600, 1000), raw, "raw", "BGRX",
                         native.contents.bytes_per_line, 1)
 x11.XDestroyImage(native)
 x11.XCloseDisplay(display)
-output = Path(sys.argv[1])
+capture_only = sys.argv[1] == "--capture-only"
+output = Path(sys.argv[2] if capture_only else sys.argv[1])
 output.parent.mkdir(parents=True, exist_ok=True)
 image.save(output)
+if capture_only:
+    raise SystemExit(0)
 samples = list(image.crop((20, 80, 1200, 720)).resize((118, 64)).getdata())
 colorful = sum(max(pixel) - min(pixel) > 80 and max(pixel) > 100 for pixel in samples)
 assert colorful > len(samples) // 4, "Remote canvas must display the fixture, not a blank/error page"

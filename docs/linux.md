@@ -6,9 +6,9 @@
 
 Linux 可作为控制端和被控端，支持多屏、单屏区域共享、键鼠控制、文字与 PNG 图片剪贴板，以及系统声音采集和远程声音播放。
 
-被控端使用 H.264 软件编码。控制端通过 WebKitGTK / GStreamer 探测 H.264、HEVC、AV1 的实际解码能力，再与被控端协商；具体能力取决于本机解码插件与驱动。
+被控端支持 H.264、HEVC、AV1：Intel / AMD 通过 VA-API、NVIDIA 通过 NVENC 编码，硬编不可用时分别使用 OpenH264、Kvazaar、SVT-AV1 软件编码，保持已协商格式。关闭硬件编码后直接使用软件。控制端通过 WebKitGTK / GStreamer 探测 H.264、HEVC、AV1 的实际解码能力，再与被控端协商；具体能力取决于本机解码插件与驱动。
 
-首版不支持 Wayland、文件与文件夹剪贴板、Linux 硬件编码、修改显示器物理分辨率、被控提示边框、登录前远控和服务开机启动。deb 的安装不创建系统服务。锁屏时暂停画面和输入；解锁后重新确认捕获源。无法确认会话锁定状态时保持暂停。
+首版不支持 Wayland、文件与文件夹剪贴板、修改显示器物理分辨率、被控提示边框、登录前远控和服务开机启动。deb 的安装不创建系统服务。锁屏时暂停画面和输入；解锁后重新确认捕获源。无法确认会话锁定状态时保持暂停。
 
 ## 安装与启动
 
@@ -30,6 +30,8 @@ AppImage 如果提示缺少 FUSE，可使用发行版的 FUSE 兼容包，或通
 在 Ubuntu 登录界面选择用户后，通过齿轮菜单选择 **Ubuntu on Xorg**，再登录。仅设置 `GDK_BACKEND=x11` 不会把 Wayland 会话变成 X11；通过 XWayland 启动同样不属于支持范围。
 
 首次连接步骤见 [README](../README.md#第一次连接)。无需用 root 运行程序。
+
+编码驱动、设备权限、后端构建与 GPU 验收见 [Linux 编码说明](linux-codecs.md)。AV1 硬编需要显卡与驱动本身支持；安装包不会安装显卡驱动。
 
 ## 声音、剪贴板与密码
 
@@ -74,6 +76,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --exclude vnt-remote --locked
 cargo test -p vnt-remote --lib --locked
+bash scripts/test-linux-codecs.sh
 bash scripts/test-linux-desktop.sh
 # 先构建发布包，再验证两个包内的真实远程画面
 npm run build:linux

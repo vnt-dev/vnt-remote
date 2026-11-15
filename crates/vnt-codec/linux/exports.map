@@ -1,0 +1,1 @@
+VNT_HW_1 { global: vnt_hw_*; local: *; };

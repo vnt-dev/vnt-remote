@@ -23,7 +23,7 @@ pub fn platform_info() -> Result<PlatformInfo, String> {
             physical_resolution: false,
             screen_recording: error.is_none(),
             accessibility: error.is_none(),
-            hardware_encode: false,
+            hardware_encode: true,
             capture_border: false,
             desktop_available: error.is_none(),
             desktop_unavailable_reason: error.unwrap_or_default(),
@@ -123,12 +123,7 @@ mod tests {
     fn linux_capabilities_never_advertise_windows_only_features() {
         let info = platform_info().unwrap();
         assert_eq!(info.platform, "linux");
-        assert!(
-            !info.file_clipboard
-                && !info.physical_resolution
-                && !info.hardware_encode
-                && !info.capture_border
-        );
+        assert!(!info.file_clipboard && !info.physical_resolution && !info.capture_border);
         assert_eq!(
             info.desktop_available,
             info.desktop_unavailable_reason.is_empty()

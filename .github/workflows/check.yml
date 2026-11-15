@@ -76,6 +76,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --exclude vnt-remote --locked
       - run: cargo test -p vnt-remote --lib --locked
+      - run: bash scripts/test-linux-codecs.sh
       - run: bash scripts/test-linux-desktop.sh
       - run: npm run build:linux
       - run: bash scripts/test-linux-packages.sh
@@ -86,3 +87,4 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/appimage/*.AppImage
             target/linux-smoke/
+            target/linux-codec/vnt-linux-codec-sources.tar.xz

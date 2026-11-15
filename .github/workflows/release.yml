@@ -155,7 +155,7 @@ jobs:
       - run: node scripts/prepare-release.mjs --portable
       - run: npm run build:linux
       - name: Upload Linux packages
-        run: gh release upload "$RELEASE_TAG" target/release/bundle/deb/*.deb target/release/bundle/appimage/*.AppImage --repo "$RELEASE_REPOSITORY" --clobber
+        run: gh release upload "$RELEASE_TAG" target/release/bundle/deb/*.deb target/release/bundle/appimage/*.AppImage target/linux-codec/vnt-linux-codec-sources.tar.xz --repo "$RELEASE_REPOSITORY" --clobber
 
   release-notes:
     needs: [windows, macos, linux]

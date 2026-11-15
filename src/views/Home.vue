@@ -1208,6 +1208,11 @@ onUnmounted(() => {
                         type="button"
                         :class="{ on: protocol === 'h264' }"
                         :disabled="!codecSupport.h264"
+                        :title="
+                          codecSupport.h264
+                            ? undefined
+                            : '当前环境不支持 H.264 视频解码，请检查媒体插件与驱动'
+                        "
                         @click="protocol = 'h264'"
                       >
                         H.264
@@ -1216,6 +1221,11 @@ onUnmounted(() => {
                         type="button"
                         :class="{ on: protocol === 'hevc' }"
                         :disabled="!codecSupport.hevc"
+                        :title="
+                          codecSupport.hevc
+                            ? undefined
+                            : '当前环境不支持 HEVC 视频解码，请检查媒体插件与驱动'
+                        "
                         @click="protocol = 'hevc'"
                       >
                         H.265
@@ -1224,12 +1234,25 @@ onUnmounted(() => {
                         type="button"
                         :class="{ on: protocol === 'av1' }"
                         :disabled="!codecSupport.av1"
+                        :title="
+                          codecSupport.av1
+                            ? undefined
+                            : '当前环境不支持 AV1 视频解码，请检查媒体插件与驱动'
+                        "
                         @click="protocol = 'av1'"
                       >
                         AV1
                       </button>
                     </div>
                   </div>
+                  <p v-if="!codecSupport.hevc || !codecSupport.av1" class="codec-cap" role="status">
+                    {{
+                      [!codecSupport.hevc ? 'HEVC' : '', !codecSupport.av1 ? 'AV1' : '']
+                        .filter(Boolean)
+                        .join(' / ')
+                    }}
+                    未通过解码自测；请更新 WebKit、媒体插件或显卡驱动。
+                  </p>
                   <div class="seg-row">
                     <span class="slb">目标帧率</span>
                     <div class="seg" role="group" aria-label="目标帧率">
@@ -1644,7 +1667,7 @@ onUnmounted(() => {
                     <div v-if="platform?.hardwareEncode" class="srow" style="margin-top: 6px">
                       <div class="grow">
                         <div class="st">硬件编码</div>
-                        <div class="sd">使用显卡压缩视频画面</div>
+                        <div class="sd">优先硬编，不可用时使用同格式软件编码</div>
                       </div>
                       <button
                         type="button"
@@ -1929,6 +1952,10 @@ onUnmounted(() => {
                     <div class="grow">
                       <div class="st">关于本应用</div>
                       <div class="sd">局域网远程桌面</div>
+                      <p v-if="platform?.platform === 'linux'" class="sd">
+                        Linux 编码模块使用
+                        FFmpeg（LGPL-2.1-or-later）。对应源码与构建说明随发布版本提供。
+                      </p>
                     </div>
                   </div>
                   <div class="srow">

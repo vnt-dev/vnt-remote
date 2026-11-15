@@ -10,10 +10,13 @@
 //! 被控端关闭硬件编码时由上层过滤掉 `hardware` 能力并用
 //! [`create_encoder`] 的 `hardware = false` 走纯软件路径。
 
+#[cfg(target_os = "linux")]
+pub mod linux;
+
 pub mod color;
 pub mod dependencies;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub mod kvazaar;
 
 #[cfg(windows)]
@@ -24,9 +27,9 @@ pub mod openh264_enc;
 #[cfg(target_os = "macos")]
 mod videotoolbox;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub mod svt_av1;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub mod svt_av1_ffi;
 
 use vnt_proto::negotiate::EncoderCap;
@@ -174,16 +177,7 @@ pub fn probe_caps() -> Vec<EncoderCap> {
         }
     }
     #[cfg(target_os = "linux")]
-    if openh264_enc::OpenH264Encoder::new()
-        .and_then(|mut e| e.configure(&EncodeParams::new(64, 48, 30, 1000)))
-        .is_ok()
-    {
-        caps.push(EncoderCap {
-            codec: vnt_proto::Codec::H264,
-            hardware: false,
-            name: "openh264".into(),
-        });
-    }
+    caps.extend(linux::probe_caps());
     caps
 }
 
@@ -236,10 +230,19 @@ pub fn create_encoder(
     let _ = (codec, hardware);
     #[cfg(target_os = "linux")]
     {
-        let _ = hardware;
-        if codec == vnt_proto::Codec::H264 {
-            return Ok(Box::new(openh264_enc::OpenH264Encoder::new()?));
-        }
+        return Ok(Box::new(linux::LinuxEncoder::new(codec, hardware)));
     }
+    #[allow(unreachable_code)]
     Err(EncodeError::Unsupported)
+}
+
+/// Resolve hardware/software selection against the real stream parameters.
+pub fn create_configured_encoder(
+    codec: vnt_proto::Codec,
+    hardware: bool,
+    params: &EncodeParams,
+) -> Result<Box<dyn VideoEncoder>, EncodeError> {
+    let mut encoder = create_encoder(codec, hardware)?;
+    encoder.configure(params)?;
+    Ok(encoder)
 }

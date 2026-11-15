@@ -40,11 +40,60 @@ describe('codec negotiation', () => {
     const isConfigSupported = vi.fn(async (config: VideoDecoderConfig) => ({
       supported: config.codec.startsWith('avc1'),
     }));
-    vi.stubGlobal('VideoDecoder', { isConfigSupported });
+    vi.stubGlobal(
+      'EncodedVideoChunk',
+      class {
+        constructor(readonly init: EncodedVideoChunkInit) {}
+      },
+    );
+    vi.stubGlobal(
+      'VideoDecoder',
+      class {
+        static isConfigSupported = isConfigSupported;
+        constructor(private init: VideoDecoderInit) {}
+        configure() {}
+        decode() {
+          this.init.output({ close() {} } as VideoFrame);
+        }
+        flush() {
+          return Promise.resolve();
+        }
+        close() {}
+      },
+    );
     expect(await supportedCodecList()).toEqual(['h264']);
     expect(isConfigSupported).toHaveBeenCalledWith(decoderConfig('hevc', 3840, 2160));
     expect(isConfigSupported).toHaveBeenCalledWith(decoderConfig('h264', 3840, 2160));
     expect(decoderConfig('hevc', 3840, 2160).hardwareAcceleration).toBe('no-preference');
+  });
+  it('rejects a codec that advertises support but fails actual decoding or produces no output', async () => {
+    vi.stubGlobal(
+      'EncodedVideoChunk',
+      class {
+        constructor(readonly init: EncodedVideoChunkInit) {}
+      },
+    );
+    vi.stubGlobal(
+      'VideoDecoder',
+      class {
+        static isConfigSupported = async () => ({ supported: true });
+        private codec = '';
+        constructor(private init: VideoDecoderInit) {}
+        configure(config: VideoDecoderConfig) {
+          this.codec = config.codec;
+        }
+        decode() {
+          if (this.codec.startsWith('av01')) this.init.error(new DOMException('Decode error'));
+          else if (this.codec.startsWith('avc1')) this.init.output({ close() {} } as VideoFrame);
+          // HEVC simulates a driver that completes flush without a decoded frame.
+        }
+        flush() {
+          return Promise.resolve();
+        }
+        close() {}
+      },
+    );
+    expect(await supportedCodecList()).toEqual(['h264']);
   });
 });
 

@@ -29,4 +29,6 @@ cargo test -p vnt-capture --test linux_desktop --locked -- --ignored --test-thre
 cargo test -p vnt-clip --test linux_desktop --locked -- --ignored --test-threads=1
 cargo test -p vnt-audio --lib --locked linux_native -- --ignored --test-threads=1
 cargo test -p vnt-remote --lib --locked linux_native_picker -- --ignored --test-threads=1
-cargo test -p vnt-remote --test e2e --locked
+# Native tests share one X server and desktop clipboard. Individual tests
+# still exercise concurrent streams and controllers explicitly.
+cargo test -p vnt-remote --test e2e --locked -- --test-threads=1

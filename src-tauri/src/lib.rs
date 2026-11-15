@@ -200,6 +200,16 @@ pub fn run() {
     builder
         .setup(move |app| {
             logging::init(&app.path().app_data_dir()?)?;
+            #[cfg(target_os = "linux")]
+            {
+                let backend = app
+                    .path()
+                    .resource_dir()?
+                    .join("linux-codec/libvnt-linux-encoder.so");
+                if !cfg!(debug_assertions) || backend.is_file() {
+                    vnt_codec::linux::set_backend_path(backend);
+                }
+            }
             let store = config::ConfigStore::new(&app.path().app_data_dir()?);
             #[cfg(windows)]
             let loaded = if let Some(client) = &desktop_client {

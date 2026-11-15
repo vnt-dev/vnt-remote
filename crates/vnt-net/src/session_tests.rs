@@ -116,6 +116,8 @@ async fn multiscreen_recovery_replays_only_open_routes_and_gates_each_reference_
                 id,
                 1,
                 Msg::StreamReset(pb::StreamReset {
+                    hardware: None,
+                    encoder_name: None,
                     width: 64,
                     height: 48,
                     fps: 30,
@@ -826,6 +828,8 @@ async fn media_failure_reconnects_only_media_and_replays_configuration_before_ke
     let (mut client, mut server) = pair(&mut h, true).await;
     server
         .send(&Msg::StreamReset(pb::StreamReset {
+            hardware: None,
+            encoder_name: None,
             width: 64,
             height: 48,
             fps: 30,

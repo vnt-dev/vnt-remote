@@ -412,7 +412,7 @@ onUnmounted(() => {
         </span>
         <span class="rchip ok chip-codec">
           <b>{{ session.codec.toUpperCase() }}</b> ·
-          {{ session.hardware ? '硬件编码' : '软件编码' }}
+          {{ (decoder.streamInfo.value?.hardware ?? session.hardware) ? '硬件编码' : '软件编码' }}
         </span>
         <span class="live-fps" title="每秒实际显示帧数"
           ><b>{{ liveFps }}</b> fps</span
@@ -679,7 +679,9 @@ onUnmounted(() => {
             </div>
             <div>
               <dt>编码器</dt>
-              <dd class="num">{{ session.encoderName }}</dd>
+              <dd class="num">
+                {{ decoder.streamInfo.value?.encoderName ?? session.encoderName }}
+              </dd>
             </div>
             <div>
               <dt>分辨率</dt>
