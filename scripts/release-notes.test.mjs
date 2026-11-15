@@ -10,6 +10,8 @@ const desktop = {
     { name: 'VNT_0.1.0_x64-setup.exe', url: 'https://example.com/setup.exe' },
     { name: 'VNT-windows-x64-portable.exe', url: 'https://example.com/portable.exe' },
     { name: 'VNT-macos-arm64-portable.app.zip', url: 'https://example.com/macos.zip' },
+    { name: 'vnt-remote_0.1.0_amd64.deb', url: 'https://example.com/linux.deb' },
+    { name: 'vnt-remote_0.1.0_amd64.AppImage', url: 'https://example.com/linux.AppImage' },
   ],
 };
 const android = {
@@ -39,6 +41,8 @@ describe('release download table', () => {
       ],
     });
     expect(body).toContain('| Windows | x64 | 安装版 |');
+    expect(body).toContain('[下载](https://example.com/linux.deb)');
+    expect(body).toContain('[下载](https://example.com/linux.AppImage)');
     expect(body).toContain('| macOS 14+ | Apple Silicon (arm64) |');
     for (const asset of android.assets) expect(body).toContain(asset.browser_download_url);
     expect(body).not.toContain('universal.apk');

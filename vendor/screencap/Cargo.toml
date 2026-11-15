@@ -19,7 +19,7 @@ windows = { version = "0.62.2", features = [
 windows-future = "0.3.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-xcb = { version = "1.5.0",features = ["randr"] }
+xcb = { version = "1.5.0",features = ["randr", "xfixes"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.25.0"

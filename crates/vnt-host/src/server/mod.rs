@@ -310,6 +310,10 @@ async fn start_with_source(
     portable: Option<Arc<portable::Portable>>,
     source: Option<SharedCapture>,
 ) -> Result<ServerHandle, String> {
+    #[cfg(target_os = "linux")]
+    if !cfg.synthetic {
+        vnt_linux::session::check_x11()?;
+    }
     if !(1..=120).contains(&cfg.fps) || !(100..=200_000).contains(&cfg.bitrate_kbps) {
         return Err("帧率或码率超出支持范围".into());
     }
@@ -1686,6 +1690,8 @@ async fn handle_channel<
         };
         #[cfg(target_os = "macos")]
         let result = vnt_input::MacInputInjector::for_display(monitor.index);
+        #[cfg(target_os = "linux")]
+        let result = vnt_input::LinuxInputInjector::for_display(monitor.index);
         match result {
             Ok(injector) => Arc::new(injector),
             Err(error) => {

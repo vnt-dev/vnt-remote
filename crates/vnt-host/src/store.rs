@@ -1,4 +1,4 @@
-//! User configuration with an opaque Keychain reference. All writes are atomic.
+//! User configuration with an opaque system credential-store reference. All writes are atomic.
 use crate::config::AppConfig;
 use serde::{Deserialize, Serialize};
 use std::{io::Write, os::unix::fs::PermissionsExt, path::Path};
@@ -101,10 +101,51 @@ pub fn save_at(path: &Path, config: &AppConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(not(test))]
+#[cfg(all(not(test), target_os = "macos"))]
 fn secret(value: &serde_json::Value) -> Result<serde_json::Value, String> {
     vnt_macos::json(8, value)
 }
+#[cfg(all(not(test), target_os = "linux"))]
+fn secret(value: &serde_json::Value) -> Result<serde_json::Value, String> {
+    fn run(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        use secret_service::{blocking::SecretService, EncryptionType};
+        let service = SecretService::connect(EncryptionType::Dh)?;
+        let collection = service.get_default_collection()?;
+        collection.unlock()?;
+        let account = value["account"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("account missing"))?;
+        let attributes = std::collections::HashMap::from([
+            ("application", "com.vnt.remote"),
+            ("account", account),
+        ]);
+        if let Some(password) = value["password"].as_str() {
+            collection.create_item(
+                "VNT Remote",
+                attributes,
+                password.as_bytes(),
+                true,
+                "text/plain; charset=utf-8",
+            )?;
+            return Ok(serde_json::json!({}));
+        }
+        let items = collection.search_items(attributes)?;
+        if value["delete"] == true {
+            for item in items {
+                item.delete()?;
+            }
+            return Ok(serde_json::json!({}));
+        }
+        let item = items
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("密钥条目不存在"))?;
+        item.unlock()?;
+        Ok(serde_json::json!({"password":String::from_utf8(item.get_secret()?)?}))
+    }
+    run(value).map_err(|_| "无法访问系统密钥环（Secret Service）；请启动并解锁 GNOME Keyring 或兼容服务，原配置未修改".into())
+}
+#[cfg(test)]
+thread_local! { static FAIL_SECRET_WRITES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
 #[cfg(test)]
 fn secret(value: &serde_json::Value) -> Result<serde_json::Value, String> {
     use std::sync::{Mutex, OnceLock};
@@ -116,6 +157,9 @@ fn secret(value: &serde_json::Value) -> Result<serde_json::Value, String> {
         return Ok(serde_json::json!({}));
     }
     if let Some(password) = value["password"].as_str() {
+        if FAIL_SECRET_WRITES.get() {
+            return Err("Secret Service unavailable".into());
+        }
         values.insert(account.into(), password.into());
         return Ok(serde_json::json!({}));
     }
@@ -127,6 +171,33 @@ fn secret(value: &serde_json::Value) -> Result<serde_json::Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn credential_failure_preserves_previous_config_and_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let original = AppConfig {
+            password: "old-password".into(),
+            ..Default::default()
+        };
+        save_at(&path, &original).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        FAIL_SECRET_WRITES.set(true);
+        let result = save_at(
+            &path,
+            &AppConfig {
+                password: "new-password".into(),
+                ..original.clone()
+            },
+        );
+        FAIL_SECRET_WRITES.set(false);
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(load_from(&path).unwrap().password, "old-password");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
     #[test]
     fn multiple_profiles_keep_keychain_secrets_by_id() {
         let dir = tempfile::tempdir().unwrap();

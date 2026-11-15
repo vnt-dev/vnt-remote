@@ -602,7 +602,12 @@ async function saveConfig() {
 }
 
 async function toggleServer() {
-  if (serverBusy.value || !serviceInstalled.value) return;
+  if (
+    serverBusy.value ||
+    !serviceInstalled.value ||
+    (!serverRunning.value && platform.value?.desktopAvailable === false)
+  )
+    return;
   serverBusy.value = true;
   serverErr.value = '';
   try {
@@ -624,7 +629,12 @@ async function toggleServer() {
 }
 
 async function toggleAutoStart() {
-  if (serverBusy.value || !serviceInstalled.value) return;
+  if (
+    serverBusy.value ||
+    !serviceInstalled.value ||
+    (!serverRunning.value && platform.value?.desktopAvailable === false)
+  )
+    return;
   serverBusy.value = true;
   serverErr.value = '';
   const enabling = !autoStart.value;
@@ -639,7 +649,12 @@ async function toggleAutoStart() {
 }
 
 async function toggleSharedAudio() {
-  if (serverBusy.value || !serviceInstalled.value) return;
+  if (
+    serverBusy.value ||
+    !serviceInstalled.value ||
+    (!serverRunning.value && platform.value?.desktopAvailable === false)
+  )
+    return;
   cfg.audio = !cfg.audio;
   await saveConfig();
 }
@@ -966,7 +981,14 @@ onUnmounted(() => {
         <div class="side-foot">
           <AppUpdater compact />
           <div class="ver">
-            VNT Remote v{{ appVersion }} · {{ edition === 'portable' ? '免安装版' : '安装版' }}
+            VNT Remote v{{ appVersion }} ·
+            {{
+              platform?.platform === 'linux'
+                ? 'Linux X11'
+                : edition === 'portable'
+                  ? '免安装版'
+                  : '安装版'
+            }}
           </div>
         </div>
       </aside>
@@ -1391,6 +1413,7 @@ onUnmounted(() => {
                     :disabled="
                       serverBusy ||
                       !serviceInstalled ||
+                      (!serverRunning && platform?.desktopAvailable === false) ||
                       serviceState === 'starting' ||
                       serviceState === 'stopping'
                     "
@@ -1398,6 +1421,9 @@ onUnmounted(() => {
                   ></button>
                 </div>
 
+                <p v-if="platform && !platform.desktopAvailable" role="alert" class="hint err">
+                  {{ platform.desktopUnavailableReason }}
+                </p>
                 <div v-if="platform?.platform === 'macos'" class="mac-permissions">
                   <p>
                     macOS 免安装版 · 支持文本和图片剪贴板，暂不支持文件复制粘贴；锁屏时暂停共享。
@@ -1615,7 +1641,7 @@ onUnmounted(() => {
                       ></button>
                     </div>
 
-                    <div class="srow" style="margin-top: 6px">
+                    <div v-if="platform?.hardwareEncode" class="srow" style="margin-top: 6px">
                       <div class="grow">
                         <div class="st">硬件编码</div>
                         <div class="sd">使用显卡压缩视频画面</div>
@@ -1635,7 +1661,7 @@ onUnmounted(() => {
                       ></button>
                     </div>
 
-                    <div v-if="platform?.platform !== 'macos'" class="srow" style="margin-top: 6px">
+                    <div v-if="platform?.captureBorder" class="srow" style="margin-top: 6px">
                       <div class="grow">
                         <div class="st">显示被控边框</div>
                         <div class="sd">在被共享的屏幕周围显示提示边框，修改后立即生效</div>
@@ -1835,7 +1861,7 @@ onUnmounted(() => {
                   <div class="srow">
                     <div class="grow">
                       <div class="st">
-                        {{ edition === 'portable' ? '免安装版被控' : 'Windows 被控服务' }} ·
+                        {{ edition === 'portable' ? '本机被控' : 'Windows 被控服务' }} ·
                         {{ serviceLabel }}
                       </div>
                       <div class="sd">

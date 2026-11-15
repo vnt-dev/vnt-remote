@@ -311,11 +311,12 @@ async fn abrupt_tcp_close_across_codecs_does_not_leave_sessions_behind() {
     .await
     .unwrap();
     let addr = format!("127.0.0.1:{}", server.port).parse().unwrap();
-    // AV1/H264 有软编兜底必然可协商；HEVC 只有硬件路径，按探测结果动态判定
+    // Negotiation must agree with the codecs actually implemented on this platform.
     let caps = vnt_codec::probe_caps();
+    let av1_available = caps.iter().any(|c| c.codec == vnt_proto::Codec::Av1);
     let hevc_available = caps.iter().any(|c| c.codec == vnt_proto::Codec::Hevc);
     for (codecs, expect_welcome) in [
-        (vec![pb::Codec::Av1.into()], true),
+        (vec![pb::Codec::Av1.into()], av1_available),
         (vec![pb::Codec::H264.into()], true),
         (vec![pb::Codec::Hevc.into()], hevc_available),
     ] {
@@ -915,12 +916,14 @@ async fn full_loop_video_over_ws_bridge() {
 }
 
 /// AV1 全链路（svt-av1 软编）：校验 OBU 码流格式随协商结果下发。
+#[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn full_loop_av1_video_over_ws_bridge() {
     video_over_ws_bridge(true, vec!["av1".into()], vnt_proto::Transport::Hybrid).await;
 }
 
 /// Regression: HEVC-only clients must connect with host hardware encoding off.
+#[cfg(windows)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn full_loop_software_hevc_video_over_ws_bridge() {
     for transport in [vnt_proto::Transport::Tcp, vnt_proto::Transport::Hybrid] {

@@ -13,6 +13,8 @@ pub struct Monitor {
     width: u16,
     height: u16,
     primary: bool,
+    name: String,
+    orientation: u32,
 }
 
 impl Monitor {
@@ -47,7 +49,7 @@ impl Monitor {
         let mut monitors = monitors_from_randr(conn.clone(), root)
             .unwrap_or_else(|| fallback_monitor(conn.clone(), root, &screen));
 
-        monitors.sort_by_key(|monitor| (!monitor.primary, monitor.index));
+        monitors.sort_by_key(|monitor| (!monitor.primary, monitor.name.clone()));
         for (index, monitor) in monitors.iter_mut().enumerate() {
             monitor.index = index as u32;
         }
@@ -66,8 +68,15 @@ impl Monitor {
         self.root
     }
 
-    pub(crate) fn origin(&self) -> (i16, i16) {
+    pub fn origin(&self) -> (i16, i16) {
         (self.x, self.y)
+    }
+
+    pub fn device_name(&self) -> io::Result<String> {
+        Ok(self.name.clone())
+    }
+    pub fn orientation(&self) -> u32 {
+        self.orientation
     }
 
     pub fn size(&self) -> io::Result<(u32, u32)> {
@@ -126,6 +135,31 @@ fn monitors_from_get_monitors(
             width: monitor.width(),
             height: monitor.height(),
             primary: monitor.primary(),
+            name: conn
+                .wait_for_reply(conn.send_request(&x::GetAtomName {
+                    atom: monitor.name(),
+                }))
+                .map(|r| r.name().to_utf8().into_owned())
+                .unwrap_or_else(|_| format!("X11-monitor-{index}")),
+            orientation: monitor
+                .outputs()
+                .first()
+                .and_then(|output| {
+                    let info = conn
+                        .wait_for_reply(conn.send_request(&randr::GetOutputInfo {
+                            output: *output,
+                            config_timestamp: 0,
+                        }))
+                        .ok()?;
+                    let crtc = conn
+                        .wait_for_reply(conn.send_request(&randr::GetCrtcInfo {
+                            crtc: info.crtc(),
+                            config_timestamp: 0,
+                        }))
+                        .ok()?;
+                    Some(rotation(crtc.rotation()))
+                })
+                .unwrap_or(0),
         })
         .collect())
 }
@@ -162,6 +196,20 @@ fn monitors_from_crtcs(conn: Arc<xcb::Connection>, root: x::Window) -> xcb::Resu
             width: info.width(),
             height: info.height(),
             primary,
+            name: info
+                .outputs()
+                .iter()
+                .filter_map(|output| {
+                    conn.wait_for_reply(conn.send_request(&randr::GetOutputInfo {
+                        output: *output,
+                        config_timestamp: resources.config_timestamp(),
+                    }))
+                    .ok()
+                    .map(|r| String::from_utf8_lossy(r.name()).into_owned())
+                })
+                .collect::<Vec<_>>()
+                .join("+"),
+            orientation: rotation(info.rotation()),
         });
     }
 
@@ -182,9 +230,23 @@ fn fallback_monitor(
         width: screen.width_in_pixels(),
         height: screen.height_in_pixels(),
         primary: true,
+        name: "X11-screen".into(),
+        orientation: 0,
     }]
 }
 
 pub(crate) fn to_io_error(error: impl fmt::Display) -> io::Error {
     io::Error::other(error.to_string())
+}
+
+fn rotation(value: randr::Rotation) -> u32 {
+    if value.contains(randr::Rotation::ROTATE_90) {
+        1
+    } else if value.contains(randr::Rotation::ROTATE_180) {
+        2
+    } else if value.contains(randr::Rotation::ROTATE_270) {
+        3
+    } else {
+        0
+    }
 }

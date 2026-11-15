@@ -128,6 +128,8 @@ pub(super) fn normal_desktop() -> bool {
     #[cfg(windows)]
     return crate::windows::native::desktop_name()
         .is_ok_and(|name| name.eq_ignore_ascii_case("default"));
+    #[cfg(target_os = "linux")]
+    return vnt_linux::session::unlocked();
     #[cfg(target_os = "macos")]
     vnt_macos::query(9)
         .ok()

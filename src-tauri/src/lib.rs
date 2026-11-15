@@ -32,6 +32,9 @@ mod region_picker;
 #[cfg(target_os = "macos")]
 #[path = "region_picker_macos.rs"]
 mod region_picker;
+#[cfg(target_os = "linux")]
+#[path = "region_picker_linux.rs"]
+mod region_picker;
 mod remote_windows;
 pub mod server;
 mod tray;
@@ -204,7 +207,7 @@ pub fn run() {
             } else {
                 store.load()
             };
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             let loaded = store.load();
             let cfg = loaded.unwrap_or_else(|error| {
                 tracing::warn!(%error, "读取被控配置失败");

@@ -75,6 +75,8 @@ pub async fn connect_prepared(
     clipboard: Arc<crate::clipboard::ClipboardService>,
     prepared: Option<vnt_net::overlay::Prepared>,
 ) -> Result<(ClientHandle, ClientSessionInfo), String> {
+    #[cfg(target_os = "linux")]
+    vnt_linux::session::check_x11()?;
     let outputs = vnt_client::platform::Outputs {
         client_name: "vnt-remote webview".into(),
         media: None,

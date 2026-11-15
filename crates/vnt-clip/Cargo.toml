@@ -23,3 +23,6 @@ tempfile = "3"
 vnt-macos = { path = "../vnt-macos" }
 serde_json = { workspace = true }
 base64 = "0.22"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+vnt-linux = { path = "../vnt-linux" }

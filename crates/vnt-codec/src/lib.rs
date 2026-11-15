@@ -19,7 +19,7 @@ pub mod kvazaar;
 #[cfg(windows)]
 pub mod mf;
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 pub mod openh264_enc;
 #[cfg(target_os = "macos")]
 mod videotoolbox;
@@ -173,6 +173,17 @@ pub fn probe_caps() -> Vec<EncoderCap> {
             });
         }
     }
+    #[cfg(target_os = "linux")]
+    if openh264_enc::OpenH264Encoder::new()
+        .and_then(|mut e| e.configure(&EncodeParams::new(64, 48, 30, 1000)))
+        .is_ok()
+    {
+        caps.push(EncoderCap {
+            codec: vnt_proto::Codec::H264,
+            hardware: false,
+            name: "openh264".into(),
+        });
+    }
     caps
 }
 
@@ -221,7 +232,14 @@ pub fn create_encoder(
             return Ok(Box::new(openh264_enc::OpenH264Encoder::new()?));
         }
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let _ = (codec, hardware);
+    #[cfg(target_os = "linux")]
+    {
+        let _ = hardware;
+        if codec == vnt_proto::Codec::H264 {
+            return Ok(Box::new(openh264_enc::OpenH264Encoder::new()?));
+        }
+    }
     Err(EncodeError::Unsupported)
 }

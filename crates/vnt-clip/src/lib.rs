@@ -23,6 +23,20 @@ pub mod win;
 #[path = "macos/win.rs"]
 pub mod win;
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub mod native {
+    pub use super::linux::{FileOperation, FileProvider, ImageValidity, NativeClipboard};
+}
+#[cfg(target_os = "linux")]
+pub mod win {
+    pub use super::linux::{read, sequence_number, set_text, snapshot, LocalSnapshot, RawImage};
+}
+#[cfg(target_os = "linux")]
+#[path = "linux/source.rs"]
+pub mod source;
+
 use std::path::PathBuf;
 
 pub use vnt_proto::validation::MAX_CLIPBOARD_ITEMS;

@@ -267,9 +267,13 @@ export interface ConnectionParams {
 let connectionParams: ConnectionParams | undefined;
 
 export interface PlatformInfo {
-  platform: 'windows' | 'macos';
+  platform: 'windows' | 'macos' | 'linux';
   fileClipboard: boolean;
   physicalResolution: boolean;
+  hardwareEncode: boolean;
+  captureBorder: boolean;
+  desktopAvailable: boolean;
+  desktopUnavailableReason: string;
   screenRecording: boolean;
   accessibility: boolean;
 }

@@ -48,6 +48,11 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::{mac_key, MacInputInjector};
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::{key_name as linux_key_name, LinuxInputInjector};
+
 /// Paste into this host's focused application. Platform selection never comes from the peer.
 /// Key-up is attempted even if a preceding injection fails.
 pub fn paste_shortcut() -> InputResult<()> {
@@ -55,11 +60,13 @@ pub fn paste_shortcut() -> InputResult<()> {
     let input = SendInputInjector::primary()?;
     #[cfg(target_os = "macos")]
     let input = MacInputInjector::for_display(0)?;
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    let input = LinuxInputInjector::for_display(0)?;
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     {
         paste_with(&input, cfg!(target_os = "macos"))
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         Err(InputError::Os("当前系统不支持粘贴".into()))
     }

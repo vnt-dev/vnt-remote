@@ -36,8 +36,8 @@ function bytes(value: number) {
 
 <template>
   <div v-if="edition === 'portable' && !compact" class="app-updater">
-    <div class="st">免安装版更新</div>
-    <p class="sd">下载新版免安装 EXE，退出程序后替换。设备列表和界面偏好会保留。</p>
+    <div class="st">手动更新</div>
+    <p class="sd">下载适合当前系统的新版本，彻底退出应用后安装或替换。设备列表和界面偏好会保留。</p>
     <button @click="api.openReleasePage()">前往发布页下载</button>
   </div>
   <div

@@ -138,7 +138,7 @@ fn render_run(
     stop: &AtomicBool,
     device_id: Option<&str>,
 ) -> Result<(), String> {
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     {
         let mut render = crate::win::Render::open_on_device(device_id)?;
         let mut player = Player::new(input.clone(), render.rate())?;
@@ -161,7 +161,7 @@ fn render_run(
         input.lock().unwrap().local_ready = false;
         Ok(())
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         let _ = (input, stop, device_id);
         Err("native playback requires Windows".into())
@@ -275,7 +275,7 @@ mod tests {
         }
     }
 
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     #[test]
     #[ignore = "requires actual Windows default audio devices; renders silence only"]
     fn default_device_capture_and_silent_render_probe() {

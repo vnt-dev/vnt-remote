@@ -7,13 +7,37 @@ pub struct PlatformInfo {
     physical_resolution: bool,
     screen_recording: bool,
     accessibility: bool,
+    hardware_encode: bool,
+    capture_border: bool,
+    desktop_available: bool,
+    desktop_unavailable_reason: String,
 }
 #[tauri::command]
 pub fn platform_info() -> Result<PlatformInfo, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let error = vnt_linux::session::check_x11().err();
+        Ok(PlatformInfo {
+            platform: "linux",
+            file_clipboard: false,
+            physical_resolution: false,
+            screen_recording: error.is_none(),
+            accessibility: error.is_none(),
+            hardware_encode: false,
+            capture_border: false,
+            desktop_available: error.is_none(),
+            desktop_unavailable_reason: error.unwrap_or_default(),
+        })
+    }
+
     #[cfg(target_os = "macos")]
     {
         let permission = vnt_macos::query(1)?;
         Ok(PlatformInfo {
+            hardware_encode: true,
+            capture_border: false,
+            desktop_available: true,
+            desktop_unavailable_reason: String::new(),
             platform: "macos",
             file_clipboard: false,
             physical_resolution: false,
@@ -24,6 +48,10 @@ pub fn platform_info() -> Result<PlatformInfo, String> {
     #[cfg(windows)]
     {
         Ok(PlatformInfo {
+            hardware_encode: true,
+            capture_border: true,
+            desktop_available: true,
+            desktop_unavailable_reason: String::new(),
             platform: "windows",
             file_clipboard: true,
             physical_resolution: true,
@@ -34,6 +62,9 @@ pub fn platform_info() -> Result<PlatformInfo, String> {
 }
 pub fn check_host_permissions(control: bool) -> Result<(), String> {
     let info = platform_info()?;
+    if !info.desktop_available {
+        return Err(info.desktop_unavailable_reason);
+    }
     validate_host_permissions(info.screen_recording, info.accessibility, control)
 }
 fn validate_host_permissions(
@@ -87,6 +118,22 @@ pub async fn request_platform_permission(permission: String, settings: bool) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_capabilities_never_advertise_windows_only_features() {
+        let info = platform_info().unwrap();
+        assert_eq!(info.platform, "linux");
+        assert!(
+            !info.file_clipboard
+                && !info.physical_resolution
+                && !info.hardware_encode
+                && !info.capture_border
+        );
+        assert_eq!(
+            info.desktop_available,
+            info.desktop_unavailable_reason.is_empty()
+        );
+    }
     #[test]
     fn host_permissions_fail_closed_and_allow_explicit_view_only() {
         assert!(validate_host_permissions(false, true, false).is_err());
