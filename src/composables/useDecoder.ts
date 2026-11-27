@@ -11,6 +11,7 @@ export interface StreamInfo {
   height: number;
   fps: number;
   hardware: boolean;
+  encoderName?: string;
 }
 
 export interface DecoderStats {

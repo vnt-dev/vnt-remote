@@ -1,0 +1,11 @@
+[package]
+name = "vnt-linux"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", features = ["randr", "xtest", "xfixes", "xkb"] }
+zbus = "5"
+log.workspace = true
+libc = "0.2"

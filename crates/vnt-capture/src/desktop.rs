@@ -749,3 +749,15 @@ mod region_view_tests {
         );
     }
 }
+
+#[cfg(target_os = "linux")]
+fn live_monitor(selected: &MonitorInfo) -> Result<MonitorInfo, CaptureError> {
+    #[cfg(test)]
+    if selected.hmonitor == 0 && selected.name == "Synthetic" {
+        return Ok(selected.clone());
+    }
+    crate::list_monitors()?
+        .into_iter()
+        .find(|m| m.name == selected.name)
+        .ok_or(CaptureError::NoMonitor)
+}

@@ -1635,7 +1635,7 @@ async fn session(
                         }
                         send(
                             &mut remote,
-                            &ControlMessage::StreamReset(pb::StreamReset {
+                            &ControlMessage::StreamReset(pb::StreamReset { hardware: None, encoder_name: None,
                                 width: wel.width,
                                 height: wel.height,
                                 fps: wel.fps,

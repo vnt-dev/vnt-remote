@@ -1,5 +1,13 @@
 //! Synthetic LAN fixture: never captures the screen, injects input, or changes the clipboard.
 use std::{sync::Arc, time::Duration};
+struct FixtureEvents;
+impl vnt_host::EventSink for FixtureEvents {
+    fn emit_json(&self, event: &str, payload: String) {
+        if event == "server://session" {
+            println!("fixture-session {payload}");
+        }
+    }
+}
 #[tokio::main]
 async fn main() {
     let clipboard = vnt_host::clipboard::ClipboardService::with_text_paster(
@@ -16,7 +24,7 @@ async fn main() {
         }),
     );
     let server = vnt_host::server::start(
-        Arc::new(vnt_host::NoopEventSink),
+        Arc::new(FixtureEvents),
         vnt_host::server::ServerConfig {
             port: 39875,
             password: "android-test".into(),

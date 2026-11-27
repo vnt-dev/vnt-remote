@@ -14,5 +14,5 @@ pub use vnt_proto::{EventSink, NoopEventSink};
 pub mod status;
 #[cfg(windows)]
 pub use windows::store;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub mod store;

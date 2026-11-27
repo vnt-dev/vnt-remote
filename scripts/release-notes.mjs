@@ -7,6 +7,8 @@ export function appendDownloadTable(release, androidRelease) {
     ['Windows', 'x64', '安装版', /_x64-setup\.exe$/i],
     ['Windows', 'x64', '免安装版', /-windows-x64-portable\.exe$/i],
     ['macOS 14+', 'Apple Silicon (arm64)', '免安装版', /-macos-arm64-portable\.app\.zip$/i],
+    ['Linux Ubuntu 22.04+ / X11', 'x64', 'deb', /_amd64\.deb$/i],
+    ['Linux Ubuntu 22.04+ / X11', 'x64', 'AppImage', /_(?:amd64|x86_64)\.AppImage$/i],
   ];
   const rows = platforms.map(([system, arch, edition, pattern]) => {
     const matches = release.assets.filter((asset) => pattern.test(asset.name));

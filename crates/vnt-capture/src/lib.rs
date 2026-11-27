@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 mod region;
 pub use region::*;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 use screencap::{CaptureType, Monitor, PixelFormat, Region, ScreenGrabber};
 #[cfg(target_os = "macos")]
 mod macos;
@@ -125,13 +125,19 @@ impl CaptureBuffer {
 fn monitor_handle(m: &Monitor) -> usize {
     m.h_monitor().0 as usize
 }
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn monitor_handle(m: &Monitor) -> usize {
     m.index() as usize
 }
 #[cfg(target_os = "macos")]
 fn open_grabber_for(monitor: &Monitor, _secure: bool) -> Result<ScreenGrabber, CaptureError> {
     ScreenGrabber::new(monitor).map_err(|e| CaptureError::Create(e.to_string()))
+}
+
+#[cfg(target_os = "linux")]
+fn open_grabber_for(monitor: &Monitor, _secure: bool) -> Result<ScreenGrabber, CaptureError> {
+    vnt_linux::session::check_x11().map_err(CaptureError::Create)?;
+    ScreenGrabber::new(monitor, CaptureType::Xcb).map_err(|e| CaptureError::Create(e.to_string()))
 }
 
 #[cfg(test)]
@@ -238,9 +244,9 @@ fn enumerate_monitors(probe_capture: bool) -> Result<Vec<MonitorInfo>, CaptureEr
                                 && desktop::input_name()
                                     .is_some_and(|n| !n.eq_ignore_ascii_case("default")),
                         )?;
-                        #[cfg(target_os = "macos")]
+                        #[cfg(any(target_os = "macos", target_os = "linux"))]
                         let mut grabber = open_grabber(m)?;
-                        #[cfg(target_os = "macos")]
+                        #[cfg(any(target_os = "macos", target_os = "linux"))]
                         {
                             let mut pixels = vec![0; w as usize * h as usize * 4];
                             match grabber.next_frame_region_format(
@@ -526,14 +532,24 @@ fn spawn_capture_thread(
 /// 分辨率变化通过帧的 `width/height` 字段体现（缓冲区自动扩容）。
 fn spawn_capture(monitor_index: u32, tx: CapturePublisher) -> Result<CaptureHandle, CaptureError> {
     // Validate before spawning: failure must not leave an unowned capture thread.
-    if !list_monitors()?.iter().any(|m| m.index == monitor_index) {
-        return Err(CaptureError::NoMonitor);
-    }
+    let name = list_monitors()?
+        .into_iter()
+        .find(|m| m.index == monitor_index)
+        .ok_or(CaptureError::NoMonitor)?
+        .name;
     let publication = tx.source();
     let target_fps = publication.target_fps.clone();
     let thread_fps = target_fps.clone();
     let join = spawn_capture_thread(format!("capture-{monitor_index}"), move || {
-        if let Err(e) = capture_loop(monitor_index, thread_fps, &tx, None, None, Instant::now()) {
+        if let Err(e) = capture_loop(
+            monitor_index,
+            &name,
+            thread_fps,
+            &tx,
+            None,
+            None,
+            Instant::now(),
+        ) {
             log::error!("捕获线程退出: {e}");
         }
     })?;
@@ -552,6 +568,11 @@ fn spawn_resilient_capture(
     let publication = tx.source();
     let target_fps = publication.target_fps.clone();
     let rate = target_fps.clone();
+    let name = list_monitors()?
+        .into_iter()
+        .find(|m| m.index == monitor)
+        .ok_or(CaptureError::NoMonitor)?
+        .name;
     let join = spawn_capture_thread("portable-capture".into(), move || {
         let start = Instant::now();
         while !tx.is_cancelled() {
@@ -559,6 +580,7 @@ fn spawn_resilient_capture(
             if desktop.load(Ordering::Acquire) {
                 if let Err(error) = capture_loop(
                     monitor,
+                    &name,
                     rate.clone(),
                     &tx,
                     Some(&desktop),
@@ -585,6 +607,7 @@ fn spawn_resilient_capture(
 
 fn capture_loop(
     monitor_index: u32,
+    monitor_name: &str,
     target_fps: Arc<AtomicU32>,
     tx: &CapturePublisher,
     desktop: Option<&std::sync::atomic::AtomicBool>,
@@ -593,9 +616,23 @@ fn capture_loop(
 ) -> Result<(), CaptureError> {
     #[cfg(windows)]
     let _desktop = bind_input_desktop()?;
-    let monitor = Monitor::from_index(monitor_index)
-        .map_err(e2s)
-        .map_err(CaptureError::Create)?;
+    #[cfg(not(target_os = "linux"))]
+    let monitor = {
+        let _ = monitor_name;
+        Monitor::from_index(monitor_index)
+            .map_err(e2s)
+            .map_err(CaptureError::Create)?
+    };
+    #[cfg(target_os = "linux")]
+    let monitor = {
+        let _ = monitor_index;
+        Monitor::all()
+            .map_err(e2s)
+            .map_err(CaptureError::Create)?
+            .into_iter()
+            .find(|m| m.device_name().ok().as_deref() == Some(monitor_name))
+            .ok_or(CaptureError::NoMonitor)?
+    };
     let mut grabber = open_grabber(&monitor)?;
     // 只保留一个可复用候选帧；消费者仍持有时绝不改写其像素。
     let mut published = false;
@@ -608,6 +645,8 @@ fn capture_loop(
         .map_err(CaptureError::Grab)?;
     let mut buffer = CaptureBuffer::default();
     let mut pacer = FramePacer::default();
+    #[cfg(target_os = "linux")]
+    let mut refreshed = Instant::now();
 
     loop {
         if tx.is_cancelled() {
@@ -619,6 +658,22 @@ fn capture_loop(
             return Err(CaptureError::Grab("普通桌面不可访问".into()));
         }
         let t_frame_start = Instant::now();
+        #[cfg(target_os = "linux")]
+        if refreshed.elapsed() >= Duration::from_millis(250) {
+            let current = Monitor::all()
+                .map_err(e2s)
+                .map_err(CaptureError::Grab)?
+                .into_iter()
+                .find(|m| m.device_name().ok().as_deref() == Some(monitor_name))
+                .ok_or(CaptureError::NoMonitor)?;
+            if current.size().map_err(e2s).map_err(CaptureError::Grab)? != (mw, mh)
+                || current.origin() != monitor.origin()
+                || current.orientation() != monitor.orientation()
+            {
+                return Err(CaptureError::Grab("显示模式已变化，重新创建采集流".into()));
+            }
+            refreshed = Instant::now();
+        }
         #[cfg(target_os = "macos")]
         if monitor.size().map_err(e2s).map_err(CaptureError::Grab)? != (mw, mh) {
             return Err(CaptureError::Grab("显示模式已变化，重新创建采集流".into()));
@@ -662,15 +717,19 @@ fn capture_loop(
 
         // 移交抓取缓冲，所有订阅只共享 Arc，不复制像素。
         buf.truncate(len);
+        #[cfg(target_os = "linux")]
+        let orientation = monitor.orientation();
+        #[cfg(not(target_os = "linux"))]
+        let orientation = monitor_orientation(&source_name);
         let frame = buffer.share(CapturedFrame {
             source_monitor: Some(MonitorInfo {
-                index: monitor_index,
+                index: monitor.index(),
                 width: w,
                 height: h,
                 name: source_name.clone(),
                 hmonitor: monitor_handle(&monitor),
                 primary: false,
-                orientation: monitor_orientation(&source_name),
+                orientation,
             }),
             desktop_generation: 0,
             captured_at: t_frame_start,

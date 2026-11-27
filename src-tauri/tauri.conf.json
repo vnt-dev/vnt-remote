@@ -28,7 +28,7 @@
   "bundle": {
     "active": false,
     "targets": [],
-    "icon": ["icons/icon.ico"],
+    "icon": ["icons/icon.ico", "icons/64x64.png"],
     "resources": {
       "../vendor/vnt-core/LICENSE": "licenses/vnt-core-LICENSE.txt",
       "../vendor/kvazaar/LICENSE": "licenses/kvazaar-LICENSE.txt",

@@ -632,6 +632,7 @@ pub async fn serve<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Sen
     if let Some(Msg::Welcome(binding)) = transport.updates.recv().await {
         welcome.bind_token = binding.bind_token;
     }
+    let workers_audio_enabled = welcome.audio_enabled;
     (transport.started)(&welcome);
     remote
         .send(&Msg::Welcome(welcome))
@@ -725,7 +726,21 @@ pub async fn serve<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Sen
                 if matches!(msg,Msg::VideoFrame(_)|Msg::StreamReset(_)|Msg::DesktopState(_)|Msg::StatsReport(_)) {
                     if !w.open || w.closing {continue;}
                     if let Msg::StatsReport(stats)=&msg {if stats.applied_bitrate_kbps>0{w.send_bitrate.store(stats.applied_bitrate_kbps,Ordering::Release);}}
-                    if let Msg::StreamReset(reset)=&msg {w.target.info.width=reset.width;w.target.info.height=reset.height;w.target.info.fps=reset.fps;w.target.info.generation=w.target.info.generation.wrapping_add(1).max(1);}
+                    if let Msg::StreamReset(reset)=&msg {w.target.info.width=reset.width;w.target.info.height=reset.height;w.target.info.fps=reset.fps;if let Some(hardware)=reset.hardware {w.target.info.hardware=hardware;}
+                        if let Some(backend)=&mut w.backend {
+                            if let Some(name)=&reset.encoder_name {backend.welcome.encoder_name=name.clone();}
+                            backend.welcome.hardware=w.target.info.hardware;
+                            backend.welcome.width=reset.width;backend.welcome.height=reset.height;backend.welcome.fps=reset.fps;
+                            // The outer desktop registry owns the user-visible
+                            // session; worker registries are deliberately private.
+                            if w.target.info.stream_id==active && (reset.hardware.is_some()||reset.encoder_name.is_some()) {
+                                let mut actual=backend.welcome.clone();actual.transport=hello.transport;
+                                actual.session_id=transport.session_id;
+                                actual.audio_enabled=hello.audio_enabled && workers_audio_enabled;
+                                (transport.started)(&actual);
+                            }
+                        }
+                        w.target.info.generation=w.target.info.generation.wrapping_add(1).max(1);}
                     if let Msg::DesktopState(status)=&msg {w.target.info.available=status.ready;w.target.info.reason=status.reason.clone();if status.ready{w.unavailable_since=None;}else{w.unavailable_since.get_or_insert(tokio::time::Instant::now());}revision+=1;}
                     let wrapped=screen::wrap(w.target.info.stream_id,w.target.info.generation,msg.clone());
                     if matches!(msg,Msg::VideoFrame(_)) {

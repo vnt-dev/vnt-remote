@@ -14,6 +14,20 @@ pub fn json(state: &pb::ScreensState) -> serde_json::Value {
         "screens":state.screens.iter().map(info).collect::<Vec<_>>()})
 }
 
+/// Preserve older peers' absent metadata; false is a meaningful backend update.
+pub fn stream_info(screen: &mut pb::ScreenInfo, reset: pb::StreamReset) -> serde_json::Value {
+    if let Some(hardware) = reset.hardware {
+        screen.hardware = hardware;
+    }
+    screen.width = reset.width;
+    screen.height = reset.height;
+    screen.fps = reset.fps;
+    serde_json::json!({"type":"streamInfo","streamId":screen.stream_id,"generation":screen.generation,
+        "codec":vnt_proto::Codec::from_proto(screen.codec()).map(|c|c.as_str()).unwrap_or("h264"),
+        "hardware":screen.hardware,"encoderName":reset.encoder_name,"width":reset.width,
+        "height":reset.height,"fps":reset.fps,"decoderConfig":reset.decoder_config})
+}
+
 pub fn input(state: &State, msg: Msg, requested: Option<(u32, u32, u64)>) -> Option<Msg> {
     let state = state.lock().unwrap();
     let target = state
@@ -76,6 +90,40 @@ pub fn cache_stream(cache: &crate::bridge::StreamInfoCache, id: u32, message: se
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn backend_metadata_keeps_legacy_state_and_applies_software_fallback() {
+        let mut screen = crate::pb::ScreenInfo {
+            stream_id: 1,
+            hardware: true,
+            codec: crate::pb::Codec::Hevc as i32,
+            ..Default::default()
+        };
+        let legacy = super::stream_info(
+            &mut screen,
+            crate::pb::StreamReset {
+                width: 128,
+                height: 96,
+                fps: 30,
+                ..Default::default()
+            },
+        );
+        assert_eq!(legacy["hardware"], true);
+        let updated = super::stream_info(
+            &mut screen,
+            crate::pb::StreamReset {
+                width: 128,
+                height: 96,
+                fps: 30,
+                hardware: Some(false),
+                encoder_name: Some("kvazaar".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(updated["hardware"], false);
+        assert_eq!(updated["encoderName"], "kvazaar");
+        assert!(!screen.hardware);
+    }
+
     use super::*;
     #[test]
     fn input_rejects_stale_screen_generation_and_ownership_revision() {

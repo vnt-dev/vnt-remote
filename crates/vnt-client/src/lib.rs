@@ -1100,7 +1100,10 @@ pub async fn connect_with(
                             }
                             ControlMessage::StreamReset(reset)=>{
                                 if !vnt_proto::validation::valid_video_size(reset.width,reset.height)||!(1..=120).contains(&reset.fps){break "无效的屏幕流参数".into();}
-                                let json=serde_json::json!({"type":"streamInfo","streamId":packet.stream_id,"generation":packet.generation,"codec":vnt_proto::Codec::from_proto(screen.codec()).map(|c|c.as_str()).unwrap_or("h264"),"hardware":screen.hardware,"width":reset.width,"height":reset.height,"fps":reset.fps,"decoderConfig":reset.decoder_config});
+                                let mut screen=screen;
+                                screen.generation=packet.generation;
+                                let json=screens::stream_info(&mut screen,reset);
+                                if let Some(current)=screen_state.lock().unwrap().screens.iter_mut().find(|s|s.stream_id==packet.stream_id) {*current=screen;}
                                 screens::cache_stream(&stream_cache,packet.stream_id,json.clone());let _=bridge_tx.send(BridgeMsg::Text(json.to_string()));
                             }
                             ControlMessage::DesktopState(state)=>{

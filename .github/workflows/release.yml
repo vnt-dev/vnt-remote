@@ -45,7 +45,7 @@ jobs:
             gh repo view "$RELEASE_REPOSITORY" >/dev/null
             options=()
             if [[ "$RELEASE_TAG" == *-* ]]; then options+=(--prerelease); fi
-            gh release create "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --target "$RELEASE_TARGET" --draft "${options[@]}" --title "VNT Remote $RELEASE_TAG" --notes 'Windows x64 安装版与免安装版；macOS 14+ Apple Silicon 免安装 app.zip。macOS 使用本地签名，首次启动与授权步骤见使用文档。协议 v1，主控与被控须使用相同协议版本。'
+            gh release create "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --target "$RELEASE_TARGET" --draft "${options[@]}" --title "VNT Remote $RELEASE_TAG" --notes 'Windows x64 安装版与免安装版；macOS 14+ Apple Silicon 免安装 app.zip。Linux Ubuntu 22.04+ x64 X11 deb 与 AppImage；macOS 使用本地签名，首次启动与授权步骤见使用文档。协议 v1，主控与被控须使用相同协议版本。'
           fi
           echo "release_id=$(gh release view "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --json databaseId --jq '.databaseId')" >> "$GITHUB_OUTPUT"
   windows:
@@ -134,8 +134,31 @@ jobs:
       - name: Upload macOS portable bundle
         run: gh release upload "$RELEASE_TAG" target/release/bundle/portable/*-macos-arm64-portable.app.zip --repo "$RELEASE_REPOSITORY" --clobber
 
+  linux:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_REPOSITORY: ${{ vars.RELEASE_REPOSITORY || 'vnt-dev/vnt-remote' }}
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: bash scripts/setup-linux.sh
+      - run: npm ci
+      - run: node scripts/prepare-release.mjs --portable
+      - run: npm run build:linux
+      - name: Upload Linux packages
+        run: gh release upload "$RELEASE_TAG" target/release/bundle/deb/*.deb target/release/bundle/appimage/*.AppImage target/linux-codec/vnt-linux-codec-sources.tar.xz --repo "$RELEASE_REPOSITORY" --clobber
+
   release-notes:
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}

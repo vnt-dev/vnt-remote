@@ -36,3 +36,6 @@ Thumbs.db
 # Generated Windows service sidecar
 /src-tauri/binaries/
 /src-tauri/tauri.release.conf.json
+
+/vendor/screencap/target/
+/vendor/screencap/Cargo.lock

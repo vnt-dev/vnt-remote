@@ -97,6 +97,17 @@ pub fn monitor_orientation(name: &str) -> u32 {
         .map_or(u32::MAX, |m| m.info.orientation)
 }
 
+#[cfg(target_os = "linux")]
+pub fn monitor_orientation(name: &str) -> u32 {
+    screencap::Monitor::all()
+        .ok()
+        .and_then(|ms| {
+            ms.into_iter()
+                .find(|m| m.device_name().ok().as_deref() == Some(name))
+        })
+        .map_or(u32::MAX, |m| m.orientation())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

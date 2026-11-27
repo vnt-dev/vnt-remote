@@ -241,6 +241,7 @@ export function useRemoteDecoder(
           width: msg.width,
           height: msg.height,
           fps: msg.fps,
+          hardware: msg.hardware ?? screen.hardware,
           generation: msg.generation,
         });
       }

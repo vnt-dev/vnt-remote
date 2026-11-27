@@ -1,0 +1,20 @@
+[
+  {
+    "file": "ffmpeg-6.1.6.tar.xz",
+    "url": "https://ffmpeg.org/releases/ffmpeg-6.1.6.tar.xz",
+    "sha256": "d4fcb164028dd3beee5d92c0ac72e46aac6973c75ea12dc14de07bf8f407370a",
+    "directory": "ffmpeg-6.1.6"
+  },
+  {
+    "file": "nv-codec-headers-12.0.16.1.tar.gz",
+    "url": "https://codeload.github.com/FFmpeg/nv-codec-headers/tar.gz/refs/tags/n12.0.16.1",
+    "sha256": "37e31c7ed0c9bf2da74646a3ec426c38a6d29e60b1fb7bff3e03a99b9412e050",
+    "directory": "nv-codec-headers-n12.0.16.1"
+  },
+  {
+    "file": "libva-2.20.0.tar.gz",
+    "url": "https://codeload.github.com/intel/libva/tar.gz/refs/tags/2.20.0",
+    "sha256": "117f8d658a5fc9ea406ca80a3eb4ae1d70b15a54807c9ed77199c812bed73b60",
+    "directory": "libva-2.20.0"
+  }
+]

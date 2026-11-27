@@ -22,6 +22,14 @@ pub fn app_edition() -> &'static str {
 
 #[tauri::command]
 pub fn open_release_page() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg("https://github.com/vnt-dev/vnt-remote/releases/latest")
+            .spawn()
+            .map_err(|e| format!("无法打开发布页：{e}"))?;
+        Ok(())
+    }
     #[cfg(windows)]
     {
         use windows::{
@@ -317,7 +325,7 @@ pub async fn server_start(
     }
     #[cfg(not(windows))]
     {
-        Err("macOS 不支持 Windows 服务操作".into())
+        Err("当前平台不支持 Windows 服务操作".into())
     }
 }
 #[tauri::command]
@@ -345,7 +353,7 @@ pub async fn server_stop(
     }
     #[cfg(not(windows))]
     {
-        Err("macOS 不支持 Windows 服务操作".into())
+        Err("当前平台不支持 Windows 服务操作".into())
     }
 }
 #[tauri::command]
@@ -370,7 +378,7 @@ pub async fn server_set_auto_start(
     }
     #[cfg(not(windows))]
     {
-        Err("macOS 不支持 Windows 服务操作".into())
+        Err("当前平台不支持 Windows 服务操作".into())
     }
 }
 #[tauri::command]
@@ -401,7 +409,7 @@ pub async fn desktop_update_handoff(app: tauri::AppHandle, preparing: bool) -> R
     }
     #[cfg(not(windows))]
     {
-        Err("macOS 不支持 Windows 服务操作".into())
+        Err("当前平台不支持 Windows 服务操作".into())
     }
 }
 

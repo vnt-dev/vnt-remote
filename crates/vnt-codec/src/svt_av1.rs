@@ -53,6 +53,8 @@ fn check(code: EbErrorType, what: &str) -> Result<(), EncodeError> {
 impl SvtAv1Encoder {
     /// 创建（编码器本体延迟到 configure 按参数构建，这里只验证库可用）。
     pub fn new() -> Result<Self, EncodeError> {
+        #[cfg(target_os = "linux")]
+        verify_linux_layout()?;
         // EbBitDepth 等枚举无 0 值（Rust 2024 禁止零初始化这类类型），
         // 逐字段给显式初值
         let input = EbSvtIOFormat {
@@ -347,6 +349,28 @@ impl Drop for SvtAv1Encoder {
     fn drop(&mut self) {
         self.destroy();
     }
+}
+
+#[cfg(target_os = "linux")]
+fn verify_linux_layout() -> Result<(), EncodeError> {
+    unsafe extern "C" {
+        fn vnt_svt_layout(index: u32) -> usize;
+    }
+    let expected = [
+        std::mem::size_of::<EbSvtAv1EncConfiguration>(),
+        std::mem::size_of::<EbBufferHeaderType>(),
+        std::mem::size_of::<EbSvtIOFormat>(),
+        std::mem::offset_of!(EbSvtAv1EncConfiguration, source_width),
+        std::mem::offset_of!(EbSvtAv1EncConfiguration, target_bit_rate),
+        std::mem::offset_of!(EbBufferHeaderType, pts),
+    ];
+    for (index, expected) in expected.into_iter().enumerate() {
+        // The helper is built against the same pinned headers as the encoder.
+        if unsafe { vnt_svt_layout(index as u32) } != expected {
+            return Err(EncodeError::Create("SVT-AV1 Linux ABI 布局不匹配".into()));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

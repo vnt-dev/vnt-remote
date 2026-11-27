@@ -273,6 +273,8 @@ message StreamReset {
   uint32 height = 2;
   uint32 fps = 3;
   bytes decoder_config = 4;
+  optional bool hardware = 5; // Actual backend; absent on older peers.
+  optional string encoder_name = 6;
 }
 
 enum MouseButton {

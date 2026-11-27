@@ -602,7 +602,12 @@ async function saveConfig() {
 }
 
 async function toggleServer() {
-  if (serverBusy.value || !serviceInstalled.value) return;
+  if (
+    serverBusy.value ||
+    !serviceInstalled.value ||
+    (!serverRunning.value && platform.value?.desktopAvailable === false)
+  )
+    return;
   serverBusy.value = true;
   serverErr.value = '';
   try {
@@ -624,7 +629,12 @@ async function toggleServer() {
 }
 
 async function toggleAutoStart() {
-  if (serverBusy.value || !serviceInstalled.value) return;
+  if (
+    serverBusy.value ||
+    !serviceInstalled.value ||
+    (!serverRunning.value && platform.value?.desktopAvailable === false)
+  )
+    return;
   serverBusy.value = true;
   serverErr.value = '';
   const enabling = !autoStart.value;
@@ -639,7 +649,12 @@ async function toggleAutoStart() {
 }
 
 async function toggleSharedAudio() {
-  if (serverBusy.value || !serviceInstalled.value) return;
+  if (
+    serverBusy.value ||
+    !serviceInstalled.value ||
+    (!serverRunning.value && platform.value?.desktopAvailable === false)
+  )
+    return;
   cfg.audio = !cfg.audio;
   await saveConfig();
 }
@@ -966,7 +981,14 @@ onUnmounted(() => {
         <div class="side-foot">
           <AppUpdater compact />
           <div class="ver">
-            VNT Remote v{{ appVersion }} · {{ edition === 'portable' ? '免安装版' : '安装版' }}
+            VNT Remote v{{ appVersion }} ·
+            {{
+              platform?.platform === 'linux'
+                ? 'Linux X11'
+                : edition === 'portable'
+                  ? '免安装版'
+                  : '安装版'
+            }}
           </div>
         </div>
       </aside>
@@ -1186,6 +1208,11 @@ onUnmounted(() => {
                         type="button"
                         :class="{ on: protocol === 'h264' }"
                         :disabled="!codecSupport.h264"
+                        :title="
+                          codecSupport.h264
+                            ? undefined
+                            : '当前环境不支持 H.264 视频解码，请检查媒体插件与驱动'
+                        "
                         @click="protocol = 'h264'"
                       >
                         H.264
@@ -1194,6 +1221,11 @@ onUnmounted(() => {
                         type="button"
                         :class="{ on: protocol === 'hevc' }"
                         :disabled="!codecSupport.hevc"
+                        :title="
+                          codecSupport.hevc
+                            ? undefined
+                            : '当前环境不支持 HEVC 视频解码，请检查媒体插件与驱动'
+                        "
                         @click="protocol = 'hevc'"
                       >
                         H.265
@@ -1202,12 +1234,25 @@ onUnmounted(() => {
                         type="button"
                         :class="{ on: protocol === 'av1' }"
                         :disabled="!codecSupport.av1"
+                        :title="
+                          codecSupport.av1
+                            ? undefined
+                            : '当前环境不支持 AV1 视频解码，请检查媒体插件与驱动'
+                        "
                         @click="protocol = 'av1'"
                       >
                         AV1
                       </button>
                     </div>
                   </div>
+                  <p v-if="!codecSupport.hevc || !codecSupport.av1" class="codec-cap" role="status">
+                    {{
+                      [!codecSupport.hevc ? 'HEVC' : '', !codecSupport.av1 ? 'AV1' : '']
+                        .filter(Boolean)
+                        .join(' / ')
+                    }}
+                    未通过解码自测；请更新 WebKit、媒体插件或显卡驱动。
+                  </p>
                   <div class="seg-row">
                     <span class="slb">目标帧率</span>
                     <div class="seg" role="group" aria-label="目标帧率">
@@ -1391,6 +1436,7 @@ onUnmounted(() => {
                     :disabled="
                       serverBusy ||
                       !serviceInstalled ||
+                      (!serverRunning && platform?.desktopAvailable === false) ||
                       serviceState === 'starting' ||
                       serviceState === 'stopping'
                     "
@@ -1398,6 +1444,9 @@ onUnmounted(() => {
                   ></button>
                 </div>
 
+                <p v-if="platform && !platform.desktopAvailable" role="alert" class="hint err">
+                  {{ platform.desktopUnavailableReason }}
+                </p>
                 <div v-if="platform?.platform === 'macos'" class="mac-permissions">
                   <p>
                     macOS 免安装版 · 支持文本和图片剪贴板，暂不支持文件复制粘贴；锁屏时暂停共享。
@@ -1615,10 +1664,10 @@ onUnmounted(() => {
                       ></button>
                     </div>
 
-                    <div class="srow" style="margin-top: 6px">
+                    <div v-if="platform?.hardwareEncode" class="srow" style="margin-top: 6px">
                       <div class="grow">
                         <div class="st">硬件编码</div>
-                        <div class="sd">使用显卡压缩视频画面</div>
+                        <div class="sd">优先硬编，不可用时使用同格式软件编码</div>
                       </div>
                       <button
                         type="button"
@@ -1635,7 +1684,7 @@ onUnmounted(() => {
                       ></button>
                     </div>
 
-                    <div v-if="platform?.platform !== 'macos'" class="srow" style="margin-top: 6px">
+                    <div v-if="platform?.captureBorder" class="srow" style="margin-top: 6px">
                       <div class="grow">
                         <div class="st">显示被控边框</div>
                         <div class="sd">在被共享的屏幕周围显示提示边框，修改后立即生效</div>
@@ -1835,7 +1884,7 @@ onUnmounted(() => {
                   <div class="srow">
                     <div class="grow">
                       <div class="st">
-                        {{ edition === 'portable' ? '免安装版被控' : 'Windows 被控服务' }} ·
+                        {{ edition === 'portable' ? '本机被控' : 'Windows 被控服务' }} ·
                         {{ serviceLabel }}
                       </div>
                       <div class="sd">
@@ -1903,6 +1952,10 @@ onUnmounted(() => {
                     <div class="grow">
                       <div class="st">关于本应用</div>
                       <div class="sd">局域网远程桌面</div>
+                      <p v-if="platform?.platform === 'linux'" class="sd">
+                        Linux 编码模块使用
+                        FFmpeg（LGPL-2.1-or-later）。对应源码与构建说明随发布版本提供。
+                      </p>
                     </div>
                   </div>
                   <div class="srow">

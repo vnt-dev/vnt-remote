@@ -310,6 +310,10 @@ async fn start_with_source(
     portable: Option<Arc<portable::Portable>>,
     source: Option<SharedCapture>,
 ) -> Result<ServerHandle, String> {
+    #[cfg(target_os = "linux")]
+    if !cfg.synthetic {
+        vnt_linux::session::check_x11()?;
+    }
     if !(1..=120).contains(&cfg.fps) || !(100..=200_000).contains(&cfg.bitrate_kbps) {
         return Err("帧率或码率超出支持范围".into());
     }
@@ -992,7 +996,12 @@ async fn handle_channel<
     if portable.as_ref().is_some_and(|p| !p.normal_desktop()) {
         let _ = channel
             .send(&ControlMessage::Denied(pb::Denied {
-                reason: "免安装版仅支持当前用户的普通桌面，请解锁后重试".into(),
+                reason: if cfg!(target_os = "linux") {
+                    "Linux 桌面已锁定，或无法确认当前 X11 会话状态；请解锁并检查桌面会话与 logind"
+                } else {
+                    "免安装版仅支持当前用户的普通桌面，请解锁后重试"
+                }
+                .into(),
             }))
             .await;
         return Ok(());
@@ -1271,6 +1280,34 @@ async fn handle_channel<
     let fec =
         vnt_net::fec::Sender::negotiated(hello.fec_version, transport != vnt_proto::Transport::Tcp);
     let audio_enabled = cfg.audio && hello.audio_enabled;
+    #[cfg(target_os = "linux")]
+    let (cap, prepared_encoder) = {
+        let mut cap = cap;
+        let params =
+            vnt_codec::EncodeParams::new(output_width, output_height, cfg.fps, cfg.bitrate_kbps);
+        let codec = cap.codec;
+        let prefer_hardware = cfg.hardware_encode;
+        let prepared = tokio::task::spawn_blocking(move || {
+            vnt_codec::create_configured_encoder(codec, prefer_hardware, &params)
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|result| result.map_err(|e| e.to_string()));
+        let encoder = match prepared {
+            Ok(encoder) => encoder,
+            Err(reason) => {
+                let _ = channel.send(&ControlMessage::Denied(pb::Denied {
+                    reason: format!("无法初始化 {codec:?} 编码器（{output_width}×{output_height}）：{reason}"),
+                })).await;
+                return Ok(());
+            }
+        };
+        cap.hardware = encoder.is_hardware();
+        cap.name = encoder.name().to_string();
+        (cap, Some(encoder))
+    };
+    #[cfg(not(target_os = "linux"))]
+    let prepared_encoder = None;
     if channel
         .send(&ControlMessage::Welcome(pb::Welcome {
             system: vnt_proto::system::local() as i32,
@@ -1686,6 +1723,8 @@ async fn handle_channel<
         };
         #[cfg(target_os = "macos")]
         let result = vnt_input::MacInputInjector::for_display(monitor.index);
+        #[cfg(target_os = "linux")]
+        let result = vnt_input::LinuxInputInjector::for_display(monitor.index);
         match result {
             Ok(injector) => Arc::new(injector),
             Err(error) => {
@@ -1811,6 +1850,18 @@ async fn handle_channel<
         let abort_tx = abort_tx.clone();
         let pipeline_cancel = resources.pipeline_cancel.clone();
         let runtime = tokio::runtime::Handle::current();
+        let encoder_sessions = session_slot.clone();
+        let encoder_changed: EncoderChanged = Arc::new(move |hardware, name| {
+            if let Some(info) = encoder_sessions
+                .lock()
+                .unwrap()
+                .get_mut(&session_id)
+                .and_then(|s| s.info.as_mut())
+            {
+                info.hardware = hardware;
+                info.encoder_name = name.to_string();
+            }
+        });
         match std::thread::Builder::new()
             .name("server-pipeline".into())
             .spawn(move || {
@@ -1846,6 +1897,8 @@ async fn handle_channel<
                     fps,
                     bitrate_kbps: bitrate,
                     hardware_encode,
+                    prepared_encoder,
+                    encoder_changed,
                     capture_session,
                     keyframe_gate,
                     receiver_distress,
@@ -2276,6 +2329,8 @@ impl VideoOut {
 /// 会话停止或服务级停止都经订阅的取消信号直接唤醒（无轮询睡眠）；
 /// 采集端退出（排空残余帧后）或下行通道关闭同样立即退出，
 /// 防止无消费者时空转。
+type EncoderChanged = Arc<dyn Fn(bool, &str) + Send + Sync>;
+
 struct PipelineContext {
     expected_monitor: Option<String>,
     region: Option<vnt_capture::ScreenRegion>,
@@ -2294,6 +2349,8 @@ struct PipelineContext {
     bitrate_kbps: u32,
     /// 硬件编码开关：透传给 `vnt_codec::create_encoder`。
     hardware_encode: bool,
+    prepared_encoder: Option<Box<dyn VideoEncoder>>,
+    encoder_changed: EncoderChanged,
     /// 会话独立的订阅取消状态，可在订阅创建前取消。
     capture_session: SessionCapture,
     /// 关键帧闸门（与会话 reader 共享）：节流所有关键帧请求。
@@ -2327,6 +2384,8 @@ fn pipeline_loop(context: PipelineContext) {
         fps,
         bitrate_kbps,
         mut hardware_encode,
+        prepared_encoder,
+        encoder_changed,
         capture_session,
         keyframe_gate,
         receiver_distress,
@@ -2360,7 +2419,9 @@ fn pipeline_loop(context: PipelineContext) {
         return;
     }
 
-    let mut encoder: Box<dyn VideoEncoder> = match vnt_codec::create_encoder(codec, hardware_encode)
+    let mut encoder: Box<dyn VideoEncoder> = match prepared_encoder
+        .map(Ok)
+        .unwrap_or_else(|| vnt_codec::create_encoder(codec, hardware_encode))
     {
         Ok(e) => e,
         Err(e) => {
@@ -2369,6 +2430,7 @@ fn pipeline_loop(context: PipelineContext) {
             return;
         }
     };
+    let mut announced_encoder = (encoder.is_hardware(), encoder.name().to_string());
     let mut cur_params: Option<EncodeParamsNow> = None;
     tracing::info!(
         encoder = encoder.name(),
@@ -2587,6 +2649,8 @@ fn pipeline_loop(context: PipelineContext) {
                     service_desktop.is_some(),
                     desktop_generation,
                     pb::StreamReset {
+                        hardware: Some(encoder.is_hardware()),
+                        encoder_name: Some(encoder.name().into()),
                         width: frame.width,
                         height: frame.height,
                         fps: cur_fps,
@@ -2640,6 +2704,8 @@ fn pipeline_loop(context: PipelineContext) {
                                 service_desktop.is_some(),
                                 desktop_generation,
                                 pb::StreamReset {
+                                    hardware: Some(encoder.is_hardware()),
+                                    encoder_name: Some(encoder.name().into()),
                                     width: frame.width,
                                     height: frame.height,
                                     fps: target.fps,
@@ -2697,6 +2763,31 @@ fn pipeline_loop(context: PipelineContext) {
                 break;
             }
             continue;
+        }
+        let actual_encoder = (encoder.is_hardware(), encoder.name().to_string());
+        if announced_encoder != actual_encoder {
+            (encoder_changed)(actual_encoder.0, &actual_encoder.1);
+            if control_tx
+                .blocking_send(stream_config(
+                    service_desktop.is_some(),
+                    desktop_generation,
+                    pb::StreamReset {
+                        width: frame.width,
+                        height: frame.height,
+                        fps: cur_fps,
+                        decoder_config: Vec::new(),
+                        hardware: Some(actual_encoder.0),
+                        encoder_name: Some(actual_encoder.1.clone()),
+                    },
+                ))
+                .is_err()
+            {
+                fatal!("编码后端状态无法送达，结束会话");
+                break;
+            }
+            config_revision += 1;
+            dependencies.reset(config_revision);
+            announced_encoder = actual_encoder;
         }
         encode_failures = 0;
         stats_inputs += 1;

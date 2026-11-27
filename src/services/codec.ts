@@ -1,4 +1,5 @@
 // WebCodecs 解码能力探测（连接时上报服务端参与协商）
+import { codecSamples } from './codecSamples';
 
 export interface CodecSupport {
   h264: boolean;
@@ -50,12 +51,52 @@ export async function selectDecoderConfig(config: VideoDecoderConfig): Promise<V
   throw new Error(`不支持 ${config.codec} 视频解码（${config.codedWidth}×${config.codedHeight}）`);
 }
 
+// Some WebKit/GStreamer combinations accept configure() while every decode()
+// fails (e.g. AV1 without av1parse). Prove actual output before negotiation.
+async function decodeSample(codec: string): Promise<boolean> {
+  if (typeof EncodedVideoChunk === 'undefined') return false;
+  return new Promise((resolve) => {
+    let decoder: VideoDecoder | undefined;
+    let finished = false;
+    const finish = (supported: boolean) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      try {
+        decoder?.close();
+      } catch {
+        /* decoder already closed */
+      }
+      resolve(supported);
+    };
+    const timeout = setTimeout(() => finish(false), 2000);
+    try {
+      decoder = new VideoDecoder({
+        output: (frame) => {
+          frame.close();
+          finish(true);
+        },
+        error: () => finish(false),
+      });
+      decoder.configure(decoderConfig(codec, 64, 64));
+      const data = Uint8Array.from(atob(codecSamples[codec]!), (byte) => byte.charCodeAt(0));
+      decoder.decode(new EncodedVideoChunk({ type: 'key', timestamp: 0, data }));
+      void decoder.flush().then(
+        () => finish(false),
+        () => finish(false),
+      );
+    } catch {
+      finish(false);
+    }
+  });
+}
+
 export async function probeCodecSupport(): Promise<CodecSupport> {
   const check = async (codec: string) => {
     if (typeof VideoDecoder === 'undefined') return false;
     try {
       const support = await VideoDecoder.isConfigSupported(decoderConfig(codec, 3840, 2160));
-      return !!support.supported;
+      return !!support.supported && (await decodeSample(codec));
     } catch {
       return false;
     }

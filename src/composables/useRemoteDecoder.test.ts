@@ -347,4 +347,28 @@ describe('simultaneous remote screen decoding', () => {
     expect(remote.commandError.value).toContain('尚未确认');
     remote.close();
   });
+  it('updates hardware labels and encoder names after a software fallback', async () => {
+    const selected = screens.map((screen) => ({ ...screen, hardware: true }));
+    const remote = createView({ ...session, screens: selected });
+    state(1, 1, selected);
+    await settleDecoder();
+    Socket.instances[0].onmessage?.({
+      data: JSON.stringify({
+        type: 'streamInfo',
+        streamId: 1,
+        generation: 1,
+        codec: 'h264',
+        width: 64,
+        height: 48,
+        fps: 30,
+        hardware: false,
+        encoderName: 'openh264',
+      }),
+    });
+    await settleDecoder();
+    expect(remote.streamInfo.value?.hardware).toBe(false);
+    expect(remote.streamInfo.value?.encoderName).toBe('openh264');
+    expect(remote.screens.value.find((screen) => screen.streamId === 1)?.hardware).toBe(false);
+    remote.close();
+  });
 });

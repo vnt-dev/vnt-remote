@@ -8,6 +8,9 @@ mod win;
 #[cfg(target_os = "macos")]
 #[path = "macos.rs"]
 mod win;
+#[cfg(target_os = "linux")]
+#[path = "linux.rs"]
+mod win;
 pub use playback::{Playback, PlaybackSender, PlaybackStatus};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20,11 +23,11 @@ pub struct PlaybackDevice {
 
 /// Only active render endpoints are selectable; never enumerates microphones.
 pub fn list_playback_devices() -> Result<Vec<PlaybackDevice>, String> {
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     {
         win::list_playback_devices()
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         Ok(Vec::new())
     }
@@ -204,7 +207,7 @@ fn capture_run(
         }
         return Ok(());
     }
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     {
         let mut capture = win::Capture::open()?;
         let mut resampler = format::Resampler::new(capture.rate(), 48000);
@@ -227,7 +230,7 @@ fn capture_run(
         }
         Ok(())
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         Err("system audio requires Windows".into())
     }
